@@ -1,3 +1,40 @@
+/**
+ * Format timestamp into Indonesian human-readable date/time
+ * @param {number} timestamp
+ * @returns {string}
+ */
+export function formatNoteDate(timestamp) {
+  if (!timestamp) return 'Baru saja';
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  const isToday =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  if (isToday) {
+    return `Hari ini, ${hours}:${minutes}`;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    date.getDate() === yesterday.getDate() &&
+    date.getMonth() === yesterday.getMonth() &&
+    date.getFullYear() === yesterday.getFullYear();
+
+  if (isYesterday) {
+    return `Kemarin, ${hours}:${minutes}`;
+  }
+
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 export function renderNotesList(notes = []) {
   if (notes.length === 0) {
     return `
@@ -20,17 +57,17 @@ export function renderNotesList(notes = []) {
   return `
     <div class="notes-section-header">
       <span class="section-title">Semua Catatan</span>
-      <span class="notes-count">${notes.length} catatan</span>
+      <span class="notes-count" id="notesCountBadge">${notes.length} catatan</span>
     </div>
     <div class="notes-list">
       ${notes
         .map(
           (note) => `
         <article class="note-card" data-note-id="${note.id}">
-          <h2 class="note-card-title">${note.title || 'Tanpa Judul'}</h2>
-          <p class="note-card-snippet">${note.content || 'Tidak ada teks tambahan...'}</p>
+          <h2 class="note-card-title">${escapeHtml(note.title) || 'Tanpa Judul'}</h2>
+          <p class="note-card-snippet">${escapeHtml(note.content) || 'Tidak ada teks tambahan...'}</p>
           <div class="note-card-meta">
-            <span>${note.updatedAt || 'Baru saja'}</span>
+            <span>${formatNoteDate(note.updatedAt)}</span>
           </div>
         </article>
       `
@@ -38,4 +75,14 @@ export function renderNotesList(notes = []) {
         .join('')}
     </div>
   `;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }

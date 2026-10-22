@@ -10,6 +10,14 @@ export function renderEditorModal() {
             </svg>
           </button>
           <div class="editor-actions">
+            <button id="deleteNoteBtn" class="btn-icon btn-danger-icon" aria-label="Hapus Catatan" title="Hapus Catatan" style="display: none;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </button>
             <button id="saveNoteBtn" class="btn-primary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
@@ -38,7 +46,7 @@ export function renderEditorModal() {
 
         <footer class="editor-footer">
           <span id="editorWordCount">0 karakter</span>
-          <span>Tahap 1 • UI Interaktif</span>
+          <span id="editorStatusText">Tersimpan di IndexedDB</span>
         </footer>
       </section>
     </div>
