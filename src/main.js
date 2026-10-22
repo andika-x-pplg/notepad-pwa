@@ -3,7 +3,7 @@ import { renderHeader } from './components/Header.js';
 import { renderSearchBar } from './components/SearchBar.js';
 import { renderNotesList } from './components/NoteList.js';
 import { renderEditorModal, renderFabAddButton } from './components/Editor.js';
-import { getAllNotes, getNoteById, createNote, updateNote, deleteNote, togglePinNote } from './js/db.js';
+import { getAllNotes, getNoteById, createNote, updateNote, deleteNote, togglePinNote, exportNotesBackup, importNotesBackup } from './js/db.js';
 
 // Application State
 let currentEditingId = null;
@@ -26,6 +26,90 @@ let cachedAllNotes = [];
 
 const DEBOUNCE_DELAY_MS = 500;
 const CATEGORIES = ['Pribadi', 'Pekerjaan', 'Belajar', 'Ide'];
+
+function renderOfflineBanner() {
+  return `
+    <div id="offlineBanner" class="offline-banner" style="display: none;" role="status">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+      <span>Mode Offline Aktif — Semua catatan tetap tersimpan aman di perangkat Anda.</span>
+    </div>
+  `;
+}
+
+function renderBackupDialog() {
+  return `
+    <div id="backupDialogOverlay" class="dialog-overlay" aria-hidden="true">
+      <div class="dialog-box backup-modal-box" role="dialog" aria-modal="true">
+        <h3 class="dialog-title">Perlindungan & Cadangan Data</h3>
+        <p class="dialog-message">Semua catatan tersimpan secara lokal di browser/perangkat Anda. Anda dapat mengekspor atau memulihkan data cadangan kapan saja.</p>
+        
+        <div class="security-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          Penyimpanan Lokal Privat (Offline-First)
+        </div>
+
+        <div class="backup-option-card" id="exportBackupCard">
+          <div class="backup-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </div>
+          <div class="backup-info">
+            <h4>Ekspor Cadangan (Download JSON)</h4>
+            <p>Unduh seluruh catatan ke file JSON sebagai salinan aman.</p>
+          </div>
+        </div>
+
+        <div class="backup-option-card" id="importBackupCard">
+          <div class="backup-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+          <div class="backup-info">
+            <h4>Pulihkan Cadangan (Impor JSON)</h4>
+            <p>Pilih file cadangan JSON untuk mengembalikan catatan Anda.</p>
+          </div>
+        </div>
+
+        <input type="file" id="backupFileInput" accept=".json" style="display: none;" />
+
+        <div class="dialog-actions">
+          <button id="closeBackupBtn" class="btn-secondary">Tutup</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderConfirmDialog() {
+  return `
+    <div id="confirmDialogOverlay" class="dialog-overlay" aria-hidden="true">
+      <div class="dialog-box" role="dialog" aria-modal="true">
+        <h3 class="dialog-title">Hapus Catatan?</h3>
+        <p class="dialog-message">Apakah Anda yakin ingin menghapus catatan ini? Tindakan ini tidak dapat dibatalkan.</p>
+        <div class="dialog-actions">
+          <button id="cancelDeleteBtn" class="btn-secondary">Batal</button>
+          <button id="confirmDeleteBtn" class="btn-danger">Hapus</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
 function renderCategoryFilters(notes = []) {
   const counts = {
@@ -72,21 +156,6 @@ function renderCategoryFilters(notes = []) {
         <span class="chip-badge">${counts.Ide}</span>
       </button>
     </nav>
-  `;
-}
-
-function renderConfirmDialog() {
-  return `
-    <div id="confirmDialogOverlay" class="dialog-overlay" aria-hidden="true">
-      <div class="dialog-box" role="dialog" aria-modal="true">
-        <h3 class="dialog-title">Hapus Catatan?</h3>
-        <p class="dialog-message">Apakah Anda yakin ingin menghapus catatan ini? Tindakan ini tidak dapat dibatalkan.</p>
-        <div class="dialog-actions">
-          <button id="cancelDeleteBtn" class="btn-secondary">Batal</button>
-          <button id="confirmDeleteBtn" class="btn-danger">Hapus</button>
-        </div>
-      </div>
-    </div>
   `;
 }
 
@@ -740,6 +809,189 @@ function setupInteractions() {
       }
     }
   });
+
+  // Backup & Data Protection Dialog Elements
+  const backupBtn = document.getElementById('backupDataBtn');
+  const backupOverlay = document.getElementById('backupDialogOverlay');
+  const closeBackupBtn = document.getElementById('closeBackupBtn');
+  const exportCard = document.getElementById('exportBackupCard');
+  const importCard = document.getElementById('importBackupCard');
+  const backupFileInput = document.getElementById('backupFileInput');
+
+  backupBtn?.addEventListener('click', () => {
+    backupOverlay?.classList.add('active');
+  });
+
+  closeBackupBtn?.addEventListener('click', () => {
+    backupOverlay?.classList.remove('active');
+  });
+
+  backupOverlay?.addEventListener('click', (e) => {
+    if (e.target === backupOverlay) {
+      backupOverlay.classList.remove('active');
+    }
+  });
+
+  // Export Notes to JSON download
+  exportCard?.addEventListener('click', async () => {
+    try {
+      const jsonContent = await exportNotesBackup();
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `catatan-saya-cadangan-${dateStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast('Cadangan catatan berhasil diunduh');
+    } catch (err) {
+      showToast('Gagal mengekspor data cadangan', true);
+    }
+  });
+
+  // Import Notes from JSON file
+  importCard?.addEventListener('click', () => {
+    backupFileInput?.click();
+  });
+
+  backupFileInput?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result;
+        const result = await importNotesBackup(text);
+        showToast(`Berhasil memulihkan ${result.imported} catatan!`);
+        backupOverlay?.classList.remove('active');
+        await loadAndRenderNotes();
+      } catch (err) {
+        showToast(err.message || 'Gagal memproses file cadangan', true);
+      } finally {
+        backupFileInput.value = '';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Offline / Online Network Detection
+  const offlineBanner = document.getElementById('offlineBanner');
+  function updateNetworkStatus() {
+    if (!offlineBanner) return;
+    if (navigator.onLine) {
+      if (offlineBanner.style.display !== 'none') {
+        offlineBanner.className = 'offline-banner online';
+        offlineBanner.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+            <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+            <line x1="12" y1="20" x2="12.01" y2="20"/>
+          </svg>
+          <span>Koneksi Kembali Online!</span>
+        `;
+        setTimeout(() => {
+          offlineBanner.style.display = 'none';
+          offlineBanner.className = 'offline-banner';
+        }, 3000);
+      }
+    } else {
+      offlineBanner.style.display = 'flex';
+      offlineBanner.className = 'offline-banner';
+      offlineBanner.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+        <span>Mode Offline Aktif — Semua catatan tetap tersimpan aman di perangkat Anda.</span>
+      `;
+    }
+  }
+
+  window.addEventListener('online', updateNetworkStatus);
+  window.addEventListener('offline', updateNetworkStatus);
+  if (!navigator.onLine) {
+    updateNetworkStatus();
+  }
+
+  // PWA Install Prompt handling
+  let deferredPrompt = null;
+  const installAppBtn = document.getElementById('installAppBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent mini-infobar or default browser prompt
+    e.preventDefault();
+    deferredPrompt = e;
+    if (installAppBtn) {
+      installAppBtn.style.display = 'inline-flex';
+    }
+  });
+
+  installAppBtn?.addEventListener('click', async () => {
+    if (!deferredPrompt) {
+      showToast('Aplikasi sudah terpasang atau browser belum siap');
+      return;
+    }
+    // Show the install prompt
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      showToast('Terima kasih telah memasang Catatan Saya!');
+    }
+    deferredPrompt = null;
+    if (installAppBtn) {
+      installAppBtn.style.display = 'none';
+    }
+  });
+
+  window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    if (installAppBtn) {
+      installAppBtn.style.display = 'none';
+    }
+    showToast('Catatan Saya berhasil dipasang!');
+  });
+}
+
+/**
+ * Register Service Worker for PWA
+ */
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker
+        .register('/sw.js')
+        .then((reg) => {
+          console.log('[PWA] Service Worker registered with scope:', reg.scope);
+        })
+        .catch((err) => {
+          console.warn('[PWA] Service Worker registration failed:', err);
+        });
+    });
+  }
+}
+
+/**
+ * Check URL params for PWA shortcuts (e.g. ?action=new)
+ */
+function handlePwaShortcuts() {
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('action') === 'new') {
+    // Clean up URL parameter cleanly
+    window.history.replaceState({}, document.title, window.location.pathname);
+    setTimeout(() => {
+      openEditor();
+    }, 200);
+  }
 }
 
 async function initApp() {
@@ -747,6 +999,7 @@ async function initApp() {
   if (!app) return;
 
   app.innerHTML = `
+    ${renderOfflineBanner()}
     ${renderHeader()}
     <main class="app-content">
       ${renderSearchBar()}
@@ -760,11 +1013,15 @@ async function initApp() {
     ${renderFabAddButton()}
     ${renderEditorModal()}
     ${renderConfirmDialog()}
+    ${renderBackupDialog()}
   `;
 
   setupInteractions();
   await loadAndRenderNotes();
+  registerServiceWorker();
+  handlePwaShortcuts();
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
 

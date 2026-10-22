@@ -189,3 +189,76 @@ export async function deleteNote(id) {
     throw error;
   }
 }
+
+/**
+ * Export all notes as a JSON string for offline backup / data protection
+ * @returns {Promise<string>}
+ */
+export async function exportNotesBackup() {
+  try {
+    const allNotes = await db.notes.toArray();
+    const backupData = {
+      app: 'Catatan Saya PWA',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      totalNotes: allNotes.length,
+      notes: allNotes
+    };
+    return JSON.stringify(backupData, null, 2);
+  } catch (error) {
+    console.error('Gagal mengekspor cadangan catatan:', error);
+    throw new Error('Gagal mengekspor data catatan.');
+  }
+}
+
+/**
+ * Import notes from a backup JSON string or object
+ * @param {string|Object} rawBackup
+ * @returns {Promise<{imported: number, skipped: number}>}
+ */
+export async function importNotesBackup(rawBackup) {
+  try {
+    let parsed = typeof rawBackup === 'string' ? JSON.parse(rawBackup) : rawBackup;
+    if (!parsed || !Array.isArray(parsed.notes)) {
+      throw new Error('Format file cadangan tidak valid (harus berisi array catatan).');
+    }
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    await db.transaction('rw', db.notes, async () => {
+      for (const item of parsed.notes) {
+        if (!item || typeof item !== 'object') {
+          skippedCount++;
+          continue;
+        }
+
+        const title = (item.title || '').trim();
+        const content = typeof item.content === 'string' ? item.content : '';
+
+        if (!title && !content.trim()) {
+          skippedCount++;
+          continue;
+        }
+
+        const record = {
+          title: title || 'Tanpa Judul',
+          content: content,
+          category: item.category || 'Pribadi',
+          isPinned: Boolean(item.isPinned),
+          createdAt: Number(item.createdAt) || Date.now(),
+          updatedAt: Number(item.updatedAt) || Date.now()
+        };
+
+        await db.notes.add(record);
+        importedCount++;
+      }
+    });
+
+    return { imported: importedCount, skipped: skippedCount };
+  } catch (error) {
+    console.error('Gagal memulihkan cadangan:', error);
+    throw error;
+  }
+}
+

@@ -1,0 +1,43 @@
+{
+  "name": "Catatan Saya - Notepad PWA",
+  "short_name": "Catatan Saya",
+  "description": "Aplikasi catatan pribadi modern, minimalis, dan responsif dengan penyimpanan lokal.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "scope": "/",
+  "lang": "id",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Buat Catatan Baru",
+      "short_name": "Baru",
+      "description": "Buka editor untuk menulis catatan baru",
+      "url": "/?action=new",
+      "icons": [
+        {
+          "src": "/pwa-icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}
