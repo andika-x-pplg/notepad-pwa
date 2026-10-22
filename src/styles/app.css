@@ -451,6 +451,75 @@
   align-items: center;
 }
 
+.editor-status-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  transition: color var(--transition-fast);
+}
+
+.status-badge .status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-badge.status-idle .status-dot {
+  background-color: var(--text-muted);
+}
+
+.status-badge.status-editing .status-dot {
+  background-color: #f59e0b;
+}
+
+.status-badge.status-saving .status-dot {
+  background-color: var(--accent-primary);
+  animation: pulse-dot 1s infinite alternate ease-in-out;
+}
+
+.status-badge.status-saved .status-dot {
+  background-color: #10b981;
+}
+
+.status-badge.status-error .status-dot {
+  background-color: var(--danger);
+}
+
+.status-badge.status-error {
+  color: var(--danger);
+}
+
+@keyframes pulse-dot {
+  from { opacity: 0.4; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1.15); }
+}
+
+.btn-retry {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-retry:hover {
+  background-color: var(--danger-light);
+}
+
 /* Custom Confirmation Dialog */
 .dialog-overlay {
   position: fixed;

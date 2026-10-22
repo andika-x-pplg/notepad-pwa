@@ -46,7 +46,13 @@ export function renderEditorModal() {
 
         <footer class="editor-footer">
           <span id="editorWordCount">0 karakter</span>
-          <span id="editorStatusText">Tersimpan di IndexedDB</span>
+          <div class="editor-status-wrapper">
+            <span id="editorStatusBadge" class="status-badge status-idle">
+              <span class="status-dot"></span>
+              <span id="editorStatusText">Siap</span>
+            </span>
+            <button id="retrySaveBtn" class="btn-retry" type="button" aria-label="Coba Simpan Lagi">Coba lagi</button>
+          </div>
         </footer>
       </section>
     </div>
