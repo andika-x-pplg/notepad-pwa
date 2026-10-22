@@ -73,7 +73,6 @@
   gap: 18px;
 }
 
-/* Search bar */
 .search-container {
   position: relative;
   display: flex;
@@ -91,7 +90,7 @@
 
 .search-input {
   width: 100%;
-  padding: 12px 14px 12px 42px;
+  padding: 12px 38px 12px 42px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-color);
   background-color: var(--bg-input);
@@ -111,7 +110,171 @@
   color: var(--text-muted);
 }
 
-/* Notes List Section */
+.clear-search-btn {
+  position: absolute;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.clear-search-btn:hover {
+  background-color: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+/* Category Filter Bar */
+.category-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.category-filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.category-filter-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.category-filter-chip:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.category-filter-chip.active {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+}
+
+.category-filter-chip.active .chip-badge {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.chip-badge {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  background-color: var(--bg-muted);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Editor Category Selector Pills */
+.editor-category-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.editor-category-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.category-pills-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-muted);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.category-pill-btn:hover {
+  border-color: var(--border-focus);
+  color: var(--text-primary);
+}
+
+.category-pill-btn.active {
+  background-color: var(--accent-light);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Category Colors & Dots */
+.category-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.cat-pribadi, .category-dot.cat-pribadi {
+  background-color: #3b82f6;
+}
+
+.cat-pekerjaan, .category-dot.cat-pekerjaan {
+  background-color: #10b981;
+}
+
+.cat-belajar, .category-dot.cat-belajar {
+  background-color: #f59e0b;
+}
+
+.cat-ide, .category-dot.cat-ide {
+  background-color: #8b5cf6;
+}
+
+.note-category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-muted);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
+/* Notes List Section & Groups */
 .notes-section-header {
   display: flex;
   align-items: center;
@@ -134,6 +297,27 @@
   border-radius: var(--radius-full);
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+.notes-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 4px 2px;
+}
+
+.pinned-group .group-header {
+  color: var(--accent-primary);
 }
 
 .notes-list {
@@ -162,6 +346,51 @@
   box-shadow: var(--shadow-md);
 }
 
+.note-card.is-pinned {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: linear-gradient(to bottom right, var(--bg-surface), var(--accent-light));
+}
+
+.note-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.btn-pin-card {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.btn-pin-card:hover {
+  background-color: var(--bg-muted);
+  color: var(--accent-primary);
+}
+
+.btn-pin-card.active {
+  color: var(--accent-primary);
+  background-color: var(--accent-light);
+}
+
+.btn-pin-toggle {
+  transition: all var(--transition-fast);
+}
+
+.btn-pin-toggle.active {
+  color: var(--accent-primary);
+  background-color: var(--accent-light);
+}
+
 .note-card-title {
   font-size: 1rem;
   font-weight: 600;
@@ -188,6 +417,29 @@
   color: var(--text-muted);
 }
 
+.pinned-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent-primary);
+  font-weight: 600;
+  font-size: 0.72rem;
+}
+
+/* Search Highlights */
+.search-highlight {
+  background-color: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .search-highlight {
+  background-color: rgba(234, 179, 8, 0.4);
+  color: #fef08a;
+}
+
 /* Empty State */
 .empty-state {
   display: flex;
@@ -200,6 +452,16 @@
   border: 1.5px dashed var(--border-color);
   border-radius: var(--radius-lg);
   margin-top: 8px;
+}
+
+.search-not-found-icon {
+  background-color: #fee2e2;
+  color: var(--danger);
+}
+
+[data-theme="dark"] .search-not-found-icon {
+  background-color: #3b1919;
+  color: #f87171;
 }
 
 .empty-state-icon {
@@ -225,7 +487,12 @@
 .empty-state-desc {
   font-size: 0.85rem;
   color: var(--text-muted);
-  max-width: 260px;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+.mt-3 {
+  margin-top: 14px;
 }
 
 /* Floating Action Button (FAB) */

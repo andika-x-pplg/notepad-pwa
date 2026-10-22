@@ -10,6 +10,12 @@ export function renderEditorModal() {
             </svg>
           </button>
           <div class="editor-actions">
+            <button id="editorPinBtn" class="btn-icon btn-pin-toggle" aria-label="Sematkan Catatan (Pin)" title="Sematkan Catatan (Pin)">
+              <svg class="pin-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="17" x2="12" y2="22"/>
+                <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+              </svg>
+            </button>
             <button id="deleteNoteBtn" class="btn-icon btn-danger-icon" aria-label="Hapus Catatan" title="Hapus Catatan" style="display: none;">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="3 6 5 6 21 6"/>
@@ -30,6 +36,23 @@ export function renderEditorModal() {
         </header>
 
         <div class="editor-content">
+          <div class="editor-category-bar">
+            <span class="editor-category-label">Kategori:</span>
+            <div class="category-pills-select" id="editorCategoryPills">
+              <button type="button" class="category-pill-btn active" data-category="Pribadi">
+                <span class="category-dot cat-pribadi"></span> Pribadi
+              </button>
+              <button type="button" class="category-pill-btn" data-category="Pekerjaan">
+                <span class="category-dot cat-pekerjaan"></span> Pekerjaan
+              </button>
+              <button type="button" class="category-pill-btn" data-category="Belajar">
+                <span class="category-dot cat-belajar"></span> Belajar
+              </button>
+              <button type="button" class="category-pill-btn" data-category="Ide">
+                <span class="category-dot cat-ide"></span> Ide
+              </button>
+            </div>
+          </div>
           <input 
             type="text" 
             id="noteTitleInput" 

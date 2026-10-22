@@ -137,6 +137,35 @@ export async function updateNote(id, updateData) {
 }
 
 /**
+ * Toggle the pinned status of a note
+ * @param {number|string} id
+ * @returns {Promise<boolean>} returns new isPinned state
+ */
+export async function togglePinNote(id) {
+  try {
+    const numericId = Number(id);
+    if (!numericId || Number.isNaN(numericId)) {
+      throw new Error('ID catatan tidak valid');
+    }
+
+    return await db.transaction('rw', db.notes, async () => {
+      const existing = await db.notes.get(numericId);
+      if (!existing) {
+        throw new Error('Catatan tidak ditemukan');
+      }
+      const newPinned = !existing.isPinned;
+      await db.notes.update(numericId, {
+        isPinned: newPinned
+      });
+      return newPinned;
+    });
+  } catch (error) {
+    console.error(`Gagal mengubah status pin catatan ID ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Delete a note by ID
  * @param {number|string} id
  * @returns {Promise<void>}

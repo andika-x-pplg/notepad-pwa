@@ -3,19 +3,77 @@ import { renderHeader } from './components/Header.js';
 import { renderSearchBar } from './components/SearchBar.js';
 import { renderNotesList } from './components/NoteList.js';
 import { renderEditorModal, renderFabAddButton } from './components/Editor.js';
-import { getAllNotes, getNoteById, createNote, updateNote, deleteNote } from './js/db.js';
+import { getAllNotes, getNoteById, createNote, updateNote, deleteNote, togglePinNote } from './js/db.js';
 
 // Application State
 let currentEditingId = null;
 let lastSavedTitle = '';
 let lastSavedContent = '';
+let lastSavedCategory = 'Pribadi';
+let lastSavedPinned = false;
+let currentEditingCategory = 'Pribadi';
+let currentEditingPinned = false;
 let debounceTimer = null;
 let isSaving = false;
 let saveQueued = false;
 let currentSavePromise = null;
 let saveRevision = 0;
 
+// Filter & Search State
+let currentSearchQuery = '';
+let currentCategoryFilter = 'all'; // 'all' or category name
+let cachedAllNotes = [];
+
 const DEBOUNCE_DELAY_MS = 500;
+const CATEGORIES = ['Pribadi', 'Pekerjaan', 'Belajar', 'Ide'];
+
+function renderCategoryFilters(notes = []) {
+  const counts = {
+    all: notes.length,
+    Pribadi: 0,
+    Pekerjaan: 0,
+    Belajar: 0,
+    Ide: 0
+  };
+
+  notes.forEach((n) => {
+    const cat = n.category || 'Pribadi';
+    if (counts[cat] !== undefined) {
+      counts[cat]++;
+    } else {
+      counts['Pribadi']++;
+    }
+  });
+
+  return `
+    <nav class="category-filter-bar" aria-label="Filter Kategori">
+      <button class="category-filter-chip ${currentCategoryFilter === 'all' ? 'active' : ''}" data-category="all">
+        Semua
+        <span class="chip-badge">${counts.all}</span>
+      </button>
+      <button class="category-filter-chip ${currentCategoryFilter === 'Pribadi' ? 'active' : ''}" data-category="Pribadi">
+        <span class="category-dot cat-pribadi"></span>
+        Pribadi
+        <span class="chip-badge">${counts.Pribadi}</span>
+      </button>
+      <button class="category-filter-chip ${currentCategoryFilter === 'Pekerjaan' ? 'active' : ''}" data-category="Pekerjaan">
+        <span class="category-dot cat-pekerjaan"></span>
+        Pekerjaan
+        <span class="chip-badge">${counts.Pekerjaan}</span>
+      </button>
+      <button class="category-filter-chip ${currentCategoryFilter === 'Belajar' ? 'active' : ''}" data-category="Belajar">
+        <span class="category-dot cat-belajar"></span>
+        Belajar
+        <span class="chip-badge">${counts.Belajar}</span>
+      </button>
+      <button class="category-filter-chip ${currentCategoryFilter === 'Ide' ? 'active' : ''}" data-category="Ide">
+        <span class="category-dot cat-ide"></span>
+        Ide
+        <span class="chip-badge">${counts.Ide}</span>
+      </button>
+    </nav>
+  `;
+}
 
 function renderConfirmDialog() {
   return `
@@ -104,28 +162,95 @@ function setSavingStatus(state, customMessage) {
   }
 }
 
+/**
+ * Filter notes based on current search query and category
+ * Case-insensitive search anywhere in title or content (front, middle, back)
+ */
+function getFilteredNotes() {
+  let result = [...cachedAllNotes];
+
+  // 1. Filter by category
+  if (currentCategoryFilter !== 'all') {
+    result = result.filter((note) => {
+      const noteCat = note.category || 'Pribadi';
+      return noteCat.toLowerCase() === currentCategoryFilter.toLowerCase();
+    });
+  }
+
+  // 2. Filter by search query (contains substring anywhere in title or content, case-insensitive)
+  if (currentSearchQuery.trim() !== '') {
+    const q = currentSearchQuery.trim().toLowerCase();
+    result = result.filter((note) => {
+      const title = (note.title || '').toLowerCase();
+      const content = (note.content || '').toLowerCase();
+      return title.includes(q) || content.includes(q);
+    });
+  }
+
+  // Sort notes: pinned notes first, then newest updated first
+  result.sort((a, b) => {
+    const pinA = Boolean(a.isPinned);
+    const pinB = Boolean(b.isPinned);
+    if (pinA !== pinB) {
+      return pinA ? -1 : 1;
+    }
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
+
+  return result;
+}
+
 async function loadAndRenderNotes() {
   const container = document.getElementById('notesContainer');
+  const categoryBarContainer = document.getElementById('categoryBarContainer');
   if (!container) return;
 
   try {
-    const notes = await getAllNotes();
-    container.innerHTML = renderNotesList(notes);
-    bindNoteClickEvents();
+    cachedAllNotes = await getAllNotes();
+
+    // Render / update category filter chips with live counts
+    if (categoryBarContainer) {
+      categoryBarContainer.innerHTML = renderCategoryFilters(cachedAllNotes);
+      bindCategoryFilterEvents();
+    }
+
+    const filtered = getFilteredNotes();
+    container.innerHTML = renderNotesList(filtered, {
+      searchQuery: currentSearchQuery,
+      selectedCategory: currentCategoryFilter,
+      totalRawNotes: cachedAllNotes.length
+    });
+
+    bindNoteCardEvents();
   } catch (error) {
     console.error('Error saat merender daftar catatan:', error);
     showToast(error.message || 'Gagal memuat catatan dari database lokal', true);
   }
 }
 
-function bindNoteClickEvents() {
+function bindCategoryFilterEvents() {
+  const chips = document.querySelectorAll('.category-filter-chip');
+  chips.forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const cat = chip.getAttribute('data-category');
+      if (currentCategoryFilter === cat) return;
+      currentCategoryFilter = cat;
+      loadAndRenderNotes();
+    });
+  });
+}
+
+function bindNoteCardEvents() {
+  // Click on card to open editor
   const noteCards = document.querySelectorAll('.note-card');
   noteCards.forEach((card) => {
-    card.addEventListener('click', async () => {
+    card.addEventListener('click', async (e) => {
+      // Don't open editor if pin button was clicked
+      if (e.target.closest('.btn-pin-card')) return;
+
       const id = card.getAttribute('data-note-id');
       if (!id) return;
 
-      // If user clicks another note while pending changes exist in current note, flush first
       if (overlayIsOpen()) {
         await flushPendingSave();
       }
@@ -143,6 +268,42 @@ function bindNoteClickEvents() {
       }
     });
   });
+
+  // Pin button directly on cards
+  const pinBtns = document.querySelectorAll('.btn-pin-card');
+  pinBtns.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-note-id');
+      if (!id) return;
+
+      try {
+        const isPinned = await togglePinNote(id);
+        showToast(isPinned ? 'Catatan disematkan ke atas' : 'Sematan catatan dilepas');
+        await loadAndRenderNotes();
+      } catch (err) {
+        showToast('Gagal mengubah status pin', true);
+      }
+    });
+  });
+
+  // Reset search button inside empty-search state
+  const resetSearchBtn = document.getElementById('resetSearchBtn');
+  resetSearchBtn?.addEventListener('click', () => {
+    const searchInput = document.getElementById('searchInput');
+    const clearBtn = document.getElementById('clearSearchBtn');
+    if (searchInput) searchInput.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    currentSearchQuery = '';
+    loadAndRenderNotes();
+  });
+
+  // Reset category button inside empty category state
+  const resetCategoryBtn = document.getElementById('resetCategoryBtn');
+  resetCategoryBtn?.addEventListener('click', () => {
+    currentCategoryFilter = 'all';
+    loadAndRenderNotes();
+  });
 }
 
 function overlayIsOpen() {
@@ -150,8 +311,34 @@ function overlayIsOpen() {
   return overlay?.classList.contains('active');
 }
 
+function updateEditorCategoryUI(selectedCategory) {
+  currentEditingCategory = selectedCategory || 'Pribadi';
+  const buttons = document.querySelectorAll('#editorCategoryPills .category-pill-btn');
+  buttons.forEach((btn) => {
+    const cat = btn.getAttribute('data-category');
+    if (cat.toLowerCase() === currentEditingCategory.toLowerCase()) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+}
+
+function updateEditorPinUI(isPinned) {
+  currentEditingPinned = Boolean(isPinned);
+  const pinBtn = document.getElementById('editorPinBtn');
+  if (pinBtn) {
+    if (currentEditingPinned) {
+      pinBtn.classList.add('active');
+      pinBtn.title = 'Lepas sematan (Pinned)';
+    } else {
+      pinBtn.classList.remove('active');
+      pinBtn.title = 'Sematkan catatan (Pin)';
+    }
+  }
+}
+
 function openEditor(note = null) {
-  // Clear any existing debounce timer
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
@@ -169,6 +356,11 @@ function openEditor(note = null) {
     currentEditingId = note.id;
     lastSavedTitle = note.title || '';
     lastSavedContent = note.content || '';
+    currentEditingCategory = note.category || 'Pribadi';
+    currentEditingPinned = Boolean(note.isPinned);
+    lastSavedCategory = currentEditingCategory;
+    lastSavedPinned = currentEditingPinned;
+
     titleInput.value = lastSavedTitle;
     bodyInput.value = lastSavedContent;
     if (deleteBtn) deleteBtn.style.display = 'flex';
@@ -177,11 +369,19 @@ function openEditor(note = null) {
     currentEditingId = null;
     lastSavedTitle = '';
     lastSavedContent = '';
+    lastSavedCategory = currentCategoryFilter !== 'all' ? currentCategoryFilter : 'Pribadi';
+    lastSavedPinned = false;
+    currentEditingCategory = lastSavedCategory;
+    currentEditingPinned = false;
+
     titleInput.value = '';
     bodyInput.value = '';
     if (deleteBtn) deleteBtn.style.display = 'none';
     setSavingStatus('idle', 'Siap');
   }
+
+  updateEditorCategoryUI(currentEditingCategory);
+  updateEditorPinUI(currentEditingPinned);
 
   if (charCounter) {
     charCounter.textContent = `${bodyInput.value.length} karakter`;
@@ -193,7 +393,6 @@ function openEditor(note = null) {
 }
 
 async function closeEditor() {
-  // Flush any pending changes before closing
   await flushPendingSave();
 
   const overlay = document.getElementById('editorOverlay');
@@ -207,6 +406,10 @@ async function closeEditor() {
   currentEditingId = null;
   lastSavedTitle = '';
   lastSavedContent = '';
+  lastSavedCategory = 'Pribadi';
+  lastSavedPinned = false;
+  currentEditingCategory = 'Pribadi';
+  currentEditingPinned = false;
 
   if (titleInput) titleInput.value = '';
   if (bodyInput) bodyInput.value = '';
@@ -231,8 +434,12 @@ function handleEditorInput() {
   const currentTitle = titleInput.value;
   const currentContent = bodyInput.value;
 
-  // Check if content differs from last saved state
-  if (currentTitle === lastSavedTitle && currentContent === lastSavedContent) {
+  if (
+    currentTitle === lastSavedTitle &&
+    currentContent === lastSavedContent &&
+    currentEditingCategory === lastSavedCategory &&
+    currentEditingPinned === lastSavedPinned
+  ) {
     return;
   }
 
@@ -250,7 +457,6 @@ function handleEditorInput() {
 
 /**
  * Execute save operation safely against IndexedDB
- * Handles race conditions, revision counters, and error states
  */
 async function performSave() {
   const titleInput = document.getElementById('noteTitleInput');
@@ -260,19 +466,12 @@ async function performSave() {
   const currentTitle = titleInput.value.trim();
   const currentContent = bodyInput.value;
 
-  // Rule: Do not create blank notes if both title and content are empty
+  // Do not create blank notes if both title and content are empty
   if (!currentTitle && !currentContent.trim()) {
     if (!currentEditingId) {
-      // It's a new empty note, remain idle
       setSavingStatus('idle', 'Siap');
       return;
     }
-  }
-
-  // Check if nothing changed compared to last saved
-  if (currentTitle === lastSavedTitle && currentContent === lastSavedContent) {
-    setSavingStatus('saved', 'Tersimpan');
-    return;
   }
 
   // If a save is already in-flight, queue next save run
@@ -288,21 +487,19 @@ async function performSave() {
 
   try {
     currentSavePromise = (async () => {
+      const payload = {
+        title: currentTitle || 'Tanpa Judul',
+        content: currentContent,
+        category: currentEditingCategory || 'Pribadi',
+        isPinned: Boolean(currentEditingPinned)
+      };
+
       if (currentEditingId) {
-        // Updating existing note
-        await updateNote(currentEditingId, {
-          title: currentTitle || 'Tanpa Judul',
-          content: currentContent
-        });
+        await updateNote(currentEditingId, payload);
       } else {
-        // Creating new note
-        const newId = await createNote({
-          title: currentTitle || 'Tanpa Judul',
-          content: currentContent
-        });
+        const newId = await createNote(payload);
         currentEditingId = newId;
 
-        // Reveal delete button now that note exists in database
         const deleteBtn = document.getElementById('deleteNoteBtn');
         if (deleteBtn) deleteBtn.style.display = 'flex';
       }
@@ -310,23 +507,22 @@ async function performSave() {
 
     await currentSavePromise;
 
-    // Only update saved snapshot and UI if this was the latest revision
     if (thisRevision === saveRevision) {
       lastSavedTitle = currentTitle;
       lastSavedContent = currentContent;
+      lastSavedCategory = currentEditingCategory;
+      lastSavedPinned = currentEditingPinned;
       setSavingStatus('saved', 'Tersimpan');
       await loadAndRenderNotes();
     }
   } catch (error) {
     console.error('Autosave error:', error);
-    // Preserve user text in input, show failed status and allow retry
     setSavingStatus('error', 'Gagal menyimpan');
     showToast('Gagal menyimpan otomatis. Ketuk "Coba lagi" untuk mencoba ulang.', true);
   } finally {
     isSaving = false;
     currentSavePromise = null;
 
-    // If another change came in while this save was executing, run it now
     if (saveQueued) {
       saveQueued = false;
       performSave();
@@ -343,18 +539,21 @@ async function flushPendingSave() {
     debounceTimer = null;
   }
 
-  // If there are unsaved changes, run save immediately
   const titleInput = document.getElementById('noteTitleInput');
   const bodyInput = document.getElementById('noteBodyInput');
   if (titleInput && bodyInput) {
     const curTitle = titleInput.value.trim();
     const curContent = bodyInput.value;
-    if (curTitle !== lastSavedTitle || curContent !== lastSavedContent) {
+    if (
+      curTitle !== lastSavedTitle ||
+      curContent !== lastSavedContent ||
+      currentEditingCategory !== lastSavedCategory ||
+      currentEditingPinned !== lastSavedPinned
+    ) {
       await performSave();
     }
   }
 
-  // If currently saving, wait for completion
   if (currentSavePromise) {
     try {
       await currentSavePromise;
@@ -371,8 +570,11 @@ function setupInteractions() {
   const saveBtn = document.getElementById('saveNoteBtn');
   const deleteBtn = document.getElementById('deleteNoteBtn');
   const retryBtn = document.getElementById('retrySaveBtn');
+  const editorPinBtn = document.getElementById('editorPinBtn');
   const titleInput = document.getElementById('noteTitleInput');
   const bodyInput = document.getElementById('noteBodyInput');
+  const searchInput = document.getElementById('searchInput');
+  const clearSearchBtn = document.getElementById('clearSearchBtn');
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   const iconSun = document.getElementById('themeIconSun');
   const iconMoon = document.getElementById('themeIconMoon');
@@ -381,6 +583,50 @@ function setupInteractions() {
   const confirmOverlay = document.getElementById('confirmDialogOverlay');
   const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
   const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+
+  // Search Input Interaction
+  searchInput?.addEventListener('input', (e) => {
+    currentSearchQuery = e.target.value;
+    if (clearSearchBtn) {
+      clearSearchBtn.style.display = currentSearchQuery.length > 0 ? 'flex' : 'none';
+    }
+    loadAndRenderNotes();
+  });
+
+  clearSearchBtn?.addEventListener('click', () => {
+    if (searchInput) {
+      searchInput.value = '';
+      searchInput.focus();
+    }
+    clearSearchBtn.style.display = 'none';
+    currentSearchQuery = '';
+    loadAndRenderNotes();
+  });
+
+  // Editor Category Selector Pills interaction
+  const editorPills = document.querySelectorAll('#editorCategoryPills .category-pill-btn');
+  editorPills.forEach((pill) => {
+    pill.addEventListener('click', async () => {
+      const selectedCat = pill.getAttribute('data-category');
+      updateEditorCategoryUI(selectedCat);
+      const curTitle = titleInput?.value.trim() || '';
+      const curContent = bodyInput?.value.trim() || '';
+      if (currentEditingId || curTitle || curContent) {
+        await performSave();
+      }
+    });
+  });
+
+  // Editor Pin Button toggle
+  editorPinBtn?.addEventListener('click', async () => {
+    updateEditorPinUI(!currentEditingPinned);
+    showToast(currentEditingPinned ? 'Catatan disematkan' : 'Sematan dilepas');
+    const curTitle = titleInput?.value.trim() || '';
+    const curContent = bodyInput?.value.trim() || '';
+    if (currentEditingId || curTitle || curContent) {
+      await performSave();
+    }
+  });
 
   // Open FAB
   openBtn?.addEventListener('click', () => openEditor());
@@ -447,7 +693,6 @@ function setupInteractions() {
   confirmDeleteBtn?.addEventListener('click', async () => {
     if (!currentEditingId) return;
 
-    // Cancel any active debounce timers
     if (debounceTimer) {
       clearTimeout(debounceTimer);
       debounceTimer = null;
@@ -457,8 +702,7 @@ function setupInteractions() {
       await deleteNote(currentEditingId);
       confirmOverlay?.classList.remove('active');
       showToast('Catatan berhasil dihapus');
-      
-      // Close editor without re-saving
+
       const overlayEl = document.getElementById('editorOverlay');
       if (overlayEl) {
         overlayEl.classList.remove('active');
@@ -506,6 +750,9 @@ async function initApp() {
     ${renderHeader()}
     <main class="app-content">
       ${renderSearchBar()}
+      <div id="categoryBarContainer">
+        <!-- Rendered dynamically with note counts -->
+      </div>
       <div id="notesContainer">
         <!-- Loaded asynchronously from IndexedDB -->
       </div>
@@ -520,3 +767,4 @@ async function initApp() {
 }
 
 document.addEventListener('DOMContentLoaded', initApp);
+
