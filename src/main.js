@@ -3,7 +3,31 @@ import { renderHeader, getViewModeIcon } from './components/Header.js';
 import { renderSearchBar } from './components/SearchBar.js';
 import { renderNotesList } from './components/NoteList.js';
 import { renderEditorModal, renderFabAddButton } from './components/Editor.js';
-import { getAllNotes, getNoteById, createNote, updateNote, deleteNote, togglePinNote, exportNotesBackup, importNotesBackup } from './js/db.js';
+import {
+  renderFolderView,
+  renderCreateFolderModal,
+  renderPasscodeModal,
+  renderTrashHeaderSubtext
+} from './components/FolderModal.js';
+import {
+  getAllNotes,
+  getTrashNotes,
+  getNoteById,
+  createNote,
+  updateNote,
+  softDeleteNote,
+  restoreNote,
+  deleteNote,
+  emptyTrash,
+  togglePinNote,
+  exportNotesBackup,
+  importNotesBackup,
+  getAllCustomFolders,
+  createCustomFolder,
+  deleteCustomFolder,
+  getSetting,
+  setSetting
+} from './js/db.js';
 
 // Application State
 let currentEditingId = null;
@@ -11,8 +35,12 @@ let lastSavedTitle = '';
 let lastSavedContent = '';
 let lastSavedCategory = 'Pribadi';
 let lastSavedPinned = false;
+let lastSavedFolderId = 'notes';
+let lastSavedIsLocked = false;
 let currentEditingCategory = 'Pribadi';
 let currentEditingPinned = false;
+let currentEditingFolderId = 'notes';
+let currentEditingIsLocked = false;
 let debounceTimer = null;
 let isSaving = false;
 let saveQueued = false;
@@ -23,7 +51,13 @@ let saveRevision = 0;
 let currentSearchQuery = '';
 let currentCategoryFilter = 'all'; // 'all' or category name
 let currentViewMode = localStorage.getItem('notepad_view_mode') || 'card'; // 'list' | 'card' | 'grid'
+let currentFolder = 'notes'; // 'notes' | 'all' | 'trash' | 'locked' | 'folder_<id>'
 let cachedAllNotes = [];
+let cachedCustomFolders = [];
+let isPasscodeUnlocked = false; // session unlock for 'locked' folder
+let passcodeSetupStep = null; // 'create' | 'confirm' | 'unlock'
+let tempPasscode = '';
+let enteredPin = '';
 
 const DEBOUNCE_DELAY_MS = 500;
 const CATEGORIES = ['Pribadi', 'Pekerjaan', 'Belajar', 'Ide'];
@@ -233,13 +267,61 @@ function setSavingStatus(state, customMessage) {
 }
 
 /**
- * Filter notes based on current search query and category
- * Case-insensitive search anywhere in title or content (front, middle, back)
+ * Helper to get user-friendly title for the active folder
+ */
+function getActiveFolderTitle() {
+  if (currentFolder === 'all') return 'Semua';
+  if (currentFolder === 'trash') return 'Baru Dihapus';
+  if (currentFolder === 'locked') return 'Terkunci';
+  if (currentFolder === 'notes') return 'Catatan';
+  if (currentFolder.startsWith('folder_')) {
+    const id = Number(currentFolder.replace('folder_', ''));
+    const f = cachedCustomFolders.find((item) => item.id === id);
+    if (f) return f.name;
+  }
+  return 'Catatan';
+}
+
+function getFolderMap() {
+  const map = {
+    notes: 'Catatan',
+    locked: 'Terkunci'
+  };
+  cachedCustomFolders.forEach((f) => {
+    map[`folder_${f.id}`] = f.name;
+  });
+  return map;
+}
+
+/**
+ * Filter notes based on active folder, search query, and category
  */
 function getFilteredNotes() {
   let result = [...cachedAllNotes];
 
-  // 1. Filter by category
+  // 1. Filter by Folder
+  if (currentFolder === 'trash') {
+    result = result.filter((n) => Boolean(n.deletedAt));
+  } else {
+    // Non-trash: notes that are not deleted
+    result = result.filter((n) => !n.deletedAt);
+
+    if (currentFolder === 'notes') {
+      // Hanya catatan biasa (folderId === 'notes' dan bukan locked)
+      result = result.filter((n) => (!n.folderId || n.folderId === 'notes') && !n.isLocked);
+    } else if (currentFolder === 'locked') {
+      // Folder rahasia terkunci
+      result = result.filter((n) => Boolean(n.isLocked) || n.folderId === 'locked');
+    } else if (currentFolder === 'all') {
+      // Semua catatan (kecuali yang terkunci untuk privasi, kecuali jika sedang terbuka)
+      result = result.filter((n) => !n.isLocked);
+    } else if (currentFolder.startsWith('folder_')) {
+      // Custom folder
+      result = result.filter((n) => n.folderId === currentFolder && !n.isLocked);
+    }
+  }
+
+  // 2. Filter by category
   if (currentCategoryFilter !== 'all') {
     result = result.filter((note) => {
       const noteCat = note.category || 'Pribadi';
@@ -247,7 +329,7 @@ function getFilteredNotes() {
     });
   }
 
-  // 2. Filter by search query (contains substring anywhere in title or content, case-insensitive)
+  // 3. Filter by search query (contains substring anywhere in title or content, case-insensitive)
   if (currentSearchQuery.trim() !== '') {
     const q = currentSearchQuery.trim().toLowerCase();
     result = result.filter((note) => {
@@ -257,12 +339,14 @@ function getFilteredNotes() {
     });
   }
 
-  // Sort notes: pinned notes first, then newest updated first
+  // Sort notes: pinned notes first (if not in trash), then newest updated first
   result.sort((a, b) => {
-    const pinA = Boolean(a.isPinned);
-    const pinB = Boolean(b.isPinned);
-    if (pinA !== pinB) {
-      return pinA ? -1 : 1;
+    if (currentFolder !== 'trash') {
+      const pinA = Boolean(a.isPinned);
+      const pinB = Boolean(b.isPinned);
+      if (pinA !== pinB) {
+        return pinA ? -1 : 1;
+      }
     }
     return (b.updatedAt || 0) - (a.updatedAt || 0);
   });
@@ -273,26 +357,66 @@ function getFilteredNotes() {
 async function loadAndRenderNotes() {
   const container = document.getElementById('notesContainer');
   const categoryBarContainer = document.getElementById('categoryBarContainer');
+  const headerTitleText = document.getElementById('headerTitleText');
+  const openEditorBtn = document.getElementById('openEditorBtn');
+  const trashNoticeContainer = document.getElementById('trashNoticeContainer');
   if (!container) return;
 
   try {
-    cachedAllNotes = await getAllNotes();
+    // Load notes (include deleted notes to calculate counts correctly)
+    cachedAllNotes = await getAllNotes(true);
+    cachedCustomFolders = await getAllCustomFolders();
+
+    // Update Header Title
+    const activeTitle = getActiveFolderTitle();
+    if (headerTitleText) {
+      headerTitleText.textContent = activeTitle;
+    }
+
+    // Toggle FAB Add Note (hide in trash view)
+    if (openEditorBtn) {
+      openEditorBtn.style.display = currentFolder === 'trash' ? 'none' : 'flex';
+    }
+
+    // Toggle Trash Notice Banner
+    if (trashNoticeContainer) {
+      if (currentFolder === 'trash') {
+        trashNoticeContainer.innerHTML = renderTrashHeaderSubtext();
+        trashNoticeContainer.style.display = 'block';
+        bindTrashHeaderEvents();
+      } else {
+        trashNoticeContainer.innerHTML = '';
+        trashNoticeContainer.style.display = 'none';
+      }
+    }
 
     // Render / update category filter chips with live counts
+    // (Hide category bar in trash view for cleanliness)
     if (categoryBarContainer) {
-      categoryBarContainer.innerHTML = renderCategoryFilters(cachedAllNotes);
-      bindCategoryFilterEvents();
+      if (currentFolder === 'trash') {
+        categoryBarContainer.style.display = 'none';
+      } else {
+        categoryBarContainer.style.display = 'block';
+        const activeNotesOnly = cachedAllNotes.filter((n) => !n.deletedAt && !n.isLocked);
+        categoryBarContainer.innerHTML = renderCategoryFilters(activeNotesOnly);
+        bindCategoryFilterEvents();
+      }
     }
 
     const filtered = getFilteredNotes();
+    const folderMap = getFolderMap();
+
     container.innerHTML = renderNotesList(filtered, {
       searchQuery: currentSearchQuery,
       selectedCategory: currentCategoryFilter,
       totalRawNotes: cachedAllNotes.length,
-      viewMode: currentViewMode
+      viewMode: currentViewMode,
+      folderMap,
+      currentFolder
     });
 
     bindNoteCardEvents();
+    updateFolderPageUI();
   } catch (error) {
     console.error('Error saat merender daftar catatan:', error);
     showToast(error.message || 'Gagal memuat catatan dari database lokal', true);
@@ -316,11 +440,25 @@ function bindNoteCardEvents() {
   const noteItems = document.querySelectorAll('.note-card, .note-list-item, .note-grid-card');
   noteItems.forEach((card) => {
     card.addEventListener('click', async (e) => {
-      // Don't open editor if pin button was clicked
-      if (e.target.closest('.btn-pin-card')) return;
+      // Don't open editor if pin, restore, or delete button was clicked
+      if (e.target.closest('.btn-pin-card, .btn-restore-note, .btn-permanent-delete-card')) return;
 
       const id = card.getAttribute('data-note-id');
       if (!id) return;
+
+      // In trash view, clicking a card offers options to restore
+      if (currentFolder === 'trash') {
+        const note = await getNoteById(id);
+        if (note) {
+          const willRestore = confirm(`Catatan "${note.title || 'Tanpa Judul'}" ada di Baru Dihapus. Pulihkan catatan ini?`);
+          if (willRestore) {
+            await restoreNote(id);
+            showToast('Catatan dipulihkan ke folder asalnya');
+            await loadAndRenderNotes();
+          }
+        }
+        return;
+      }
 
       if (overlayIsOpen()) {
         await flushPendingSave();
@@ -354,6 +492,45 @@ function bindNoteCardEvents() {
         await loadAndRenderNotes();
       } catch (err) {
         showToast('Gagal mengubah status pin', true);
+      }
+    });
+  });
+
+  // Restore button directly on trash cards
+  const restoreBtns = document.querySelectorAll('.btn-restore-note');
+  restoreBtns.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-note-id');
+      if (!id) return;
+
+      try {
+        await restoreNote(id);
+        showToast('Catatan berhasil dipulihkan');
+        await loadAndRenderNotes();
+      } catch (err) {
+        showToast('Gagal memulihkan catatan', true);
+      }
+    });
+  });
+
+  // Permanent Delete button directly on trash cards
+  const permDeleteBtns = document.querySelectorAll('.btn-permanent-delete-card');
+  permDeleteBtns.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-note-id');
+      if (!id) return;
+
+      const confirmed = confirm('Hapus permanen catatan ini? Tindakan tidak dapat dibatalkan.');
+      if (confirmed) {
+        try {
+          await deleteNote(id);
+          showToast('Catatan dihapus permanen');
+          await loadAndRenderNotes();
+        } catch (err) {
+          showToast('Gagal menghapus permanen', true);
+        }
       }
     });
   });
@@ -429,8 +606,12 @@ function openEditor(note = null) {
     lastSavedContent = note.content || '';
     currentEditingCategory = note.category || 'Pribadi';
     currentEditingPinned = Boolean(note.isPinned);
+    currentEditingFolderId = note.folderId || 'notes';
+    currentEditingIsLocked = Boolean(note.isLocked);
     lastSavedCategory = currentEditingCategory;
     lastSavedPinned = currentEditingPinned;
+    lastSavedFolderId = currentEditingFolderId;
+    lastSavedIsLocked = currentEditingIsLocked;
 
     titleInput.value = lastSavedTitle;
     bodyInput.value = lastSavedContent;
@@ -444,6 +625,20 @@ function openEditor(note = null) {
     lastSavedPinned = false;
     currentEditingCategory = lastSavedCategory;
     currentEditingPinned = false;
+    
+    // Assign new note to current folder
+    if (currentFolder === 'locked') {
+      currentEditingFolderId = 'locked';
+      currentEditingIsLocked = true;
+    } else if (currentFolder === 'all' || currentFolder === 'trash') {
+      currentEditingFolderId = 'notes';
+      currentEditingIsLocked = false;
+    } else {
+      currentEditingFolderId = currentFolder;
+      currentEditingIsLocked = false;
+    }
+    lastSavedFolderId = currentEditingFolderId;
+    lastSavedIsLocked = currentEditingIsLocked;
 
     titleInput.value = '';
     bodyInput.value = '';
@@ -481,6 +676,8 @@ async function closeEditor() {
   lastSavedPinned = false;
   currentEditingCategory = 'Pribadi';
   currentEditingPinned = false;
+  currentEditingFolderId = 'notes';
+  currentEditingIsLocked = false;
 
   if (titleInput) titleInput.value = '';
   if (bodyInput) bodyInput.value = '';
@@ -509,7 +706,9 @@ function handleEditorInput() {
     currentTitle === lastSavedTitle &&
     currentContent === lastSavedContent &&
     currentEditingCategory === lastSavedCategory &&
-    currentEditingPinned === lastSavedPinned
+    currentEditingPinned === lastSavedPinned &&
+    currentEditingFolderId === lastSavedFolderId &&
+    currentEditingIsLocked === lastSavedIsLocked
   ) {
     return;
   }
@@ -562,7 +761,9 @@ async function performSave() {
         title: currentTitle || 'Tanpa Judul',
         content: currentContent,
         category: currentEditingCategory || 'Pribadi',
-        isPinned: Boolean(currentEditingPinned)
+        isPinned: Boolean(currentEditingPinned),
+        folderId: currentEditingFolderId || 'notes',
+        isLocked: Boolean(currentEditingIsLocked)
       };
 
       if (currentEditingId) {
@@ -583,6 +784,8 @@ async function performSave() {
       lastSavedContent = currentContent;
       lastSavedCategory = currentEditingCategory;
       lastSavedPinned = currentEditingPinned;
+      lastSavedFolderId = currentEditingFolderId;
+      lastSavedIsLocked = currentEditingIsLocked;
       setSavingStatus('saved', 'Tersimpan');
       await loadAndRenderNotes();
     }
@@ -760,7 +963,7 @@ function setupInteractions() {
     }
   });
 
-  // Confirm delete note action
+  // Confirm delete note action (soft-delete to "Baru Dihapus")
   confirmDeleteBtn?.addEventListener('click', async () => {
     if (!currentEditingId) return;
 
@@ -770,9 +973,9 @@ function setupInteractions() {
     }
 
     try {
-      await deleteNote(currentEditingId);
+      await softDeleteNote(currentEditingId);
       confirmOverlay?.classList.remove('active');
-      showToast('Catatan berhasil dihapus');
+      showToast('Catatan dipindahkan ke Baru Dihapus');
 
       const overlayEl = document.getElementById('editorOverlay');
       if (overlayEl) {
@@ -789,7 +992,7 @@ function setupInteractions() {
       await loadAndRenderNotes();
     } catch (error) {
       console.error('Error saat menghapus catatan:', error);
-      showToast(error.message || 'Gagal menghapus catatan', true);
+      showToast(error.message || 'Gagal memindahkan ke Baru Dihapus', true);
     }
   });
 
@@ -840,11 +1043,14 @@ function setupInteractions() {
       const container = document.getElementById('notesContainer');
       if (container) {
         const filtered = getFilteredNotes();
+        const folderMap = getFolderMap();
         container.innerHTML = renderNotesList(filtered, {
           searchQuery: currentSearchQuery,
           selectedCategory: currentCategoryFilter,
           totalRawNotes: cachedAllNotes.length,
-          viewMode: currentViewMode
+          viewMode: currentViewMode,
+          folderMap,
+          currentFolder
         });
         bindNoteCardEvents();
       }
@@ -864,6 +1070,109 @@ function setupInteractions() {
       closeViewModeDropdown();
     }
   });
+
+  // Use delegated event listener on document so clicking anywhere on the button,
+  // text, or arrow always triggers open/close regardless of re-render
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('#folderTitleDropdownBtn');
+    if (!btn) return;
+    e.stopPropagation();
+    const overlay = document.getElementById('folderPageOverlay');
+    if (overlay?.classList.contains('active')) {
+      closeFolderPage();
+    } else {
+      openFolderPage();
+    }
+  });
+
+  // Create Folder Modal interactions
+  const createFolderOverlay = document.getElementById('createFolderOverlay');
+  const cancelCreateFolderBtn = document.getElementById('cancelCreateFolderBtn');
+  const saveCreateFolderBtn = document.getElementById('saveCreateFolderBtn');
+  const newFolderNameInput = document.getElementById('newFolderNameInput');
+  const folderPreviewCover = document.getElementById('folderPreviewCover');
+  const folderPreviewLabel = document.getElementById('folderPreviewLabel');
+  const coverSwatches = document.querySelectorAll('#coverSwatches .cover-swatch');
+
+  let selectedCoverType = 'color';
+  let selectedCoverValue = '#3b82f6';
+
+  openCreateFolderBtn?.addEventListener('click', () => {
+    if (newFolderNameInput) newFolderNameInput.value = '';
+    if (folderPreviewLabel) folderPreviewLabel.textContent = 'FOLDER';
+    selectedCoverType = 'color';
+    selectedCoverValue = '#3b82f6';
+    if (folderPreviewCover) {
+      folderPreviewCover.style.background = '#3b82f6';
+    }
+    coverSwatches.forEach((sw) => {
+      sw.classList.toggle('active', sw.getAttribute('data-value') === '#3b82f6');
+    });
+    createFolderOverlay?.classList.add('active');
+    newFolderNameInput?.focus();
+  });
+
+  cancelCreateFolderBtn?.addEventListener('click', () => {
+    createFolderOverlay?.classList.remove('active');
+  });
+
+  createFolderOverlay?.addEventListener('click', (e) => {
+    if (e.target === createFolderOverlay) {
+      createFolderOverlay.classList.remove('active');
+    }
+  });
+
+  newFolderNameInput?.addEventListener('input', (e) => {
+    const val = (e.target.value || '').trim().slice(0, 8);
+    if (folderPreviewLabel) {
+      folderPreviewLabel.textContent = val || 'FOLDER';
+    }
+  });
+
+  coverSwatches.forEach((sw) => {
+    sw.addEventListener('click', () => {
+      coverSwatches.forEach((s) => s.classList.remove('active'));
+      sw.classList.add('active');
+      selectedCoverType = sw.getAttribute('data-type');
+      selectedCoverValue = sw.getAttribute('data-value');
+      if (folderPreviewCover) {
+        if (selectedCoverType === 'gradient') {
+          folderPreviewCover.style.background = selectedCoverValue;
+        } else {
+          folderPreviewCover.style.background = selectedCoverValue;
+        }
+      }
+    });
+  });
+
+  saveCreateFolderBtn?.addEventListener('click', async () => {
+    const name = newFolderNameInput?.value.trim();
+    if (!name) {
+      showToast('Masukkan nama folder', true);
+      newFolderNameInput?.focus();
+      return;
+    }
+
+    try {
+      const newFolderId = await createCustomFolder({
+        name,
+        coverType: selectedCoverType,
+        coverValue: selectedCoverValue
+      });
+      createFolderOverlay?.classList.remove('active');
+      showToast(`Folder "${name}" berhasil dibuat`);
+
+      // Switch to this new folder
+      currentFolder = `folder_${newFolderId}`;
+      closeFolderPage();
+      await loadAndRenderNotes();
+    } catch (err) {
+      showToast(err.message || 'Gagal membuat folder', true);
+    }
+  });
+
+  // Passcode Modal interactions
+  setupPasscodeModalEvents();
 
   // Theme switcher
   let isDark = false;
@@ -1068,14 +1377,302 @@ function handlePwaShortcuts() {
   }
 }
 
+function openFolderPage() {
+  updateFolderPageUI();
+  const overlay = document.getElementById('folderPageOverlay');
+  overlay?.classList.add('active');
+  overlay?.setAttribute('aria-hidden', 'false');
+  const arrow = document.querySelector('.folder-arrow-icon');
+  if (arrow) arrow.classList.add('open');
+}
+
+function closeFolderPage() {
+  const overlay = document.getElementById('folderPageOverlay');
+  overlay?.classList.remove('active');
+  overlay?.setAttribute('aria-hidden', 'true');
+  const arrow = document.querySelector('.folder-arrow-icon');
+  if (arrow) arrow.classList.remove('open');
+}
+
+/**
+ * Calculate counts and update the Folder Page Sheet DOM
+ */
+function updateFolderPageUI() {
+  const root = document.getElementById('folderPageRoot');
+  if (!root) return;
+
+  const stats = {
+    allCount: cachedAllNotes.filter((n) => !n.deletedAt && !n.isLocked).length,
+    trashCount: cachedAllNotes.filter((n) => Boolean(n.deletedAt)).length,
+    notesCount: cachedAllNotes.filter((n) => (!n.folderId || n.folderId === 'notes') && !n.deletedAt && !n.isLocked).length,
+    lockedCount: cachedAllNotes.filter((n) => Boolean(n.isLocked) && !n.deletedAt).length
+  };
+
+  cachedCustomFolders.forEach((f) => {
+    const fKey = `folder_${f.id}`;
+    stats[fKey] = cachedAllNotes.filter((n) => n.folderId === fKey && !n.deletedAt && !n.isLocked).length;
+  });
+
+  // Preserve open status if it was active
+  const isCurrentlyOpen = document.getElementById('folderPageOverlay')?.classList.contains('active');
+
+  root.innerHTML = renderFolderView(stats, cachedCustomFolders);
+
+  if (isCurrentlyOpen) {
+    document.getElementById('folderPageOverlay')?.classList.add('active');
+    document.querySelector('.folder-arrow-icon')?.classList.add('open');
+  }
+
+  bindFolderPageEvents();
+}
+
+/**
+ * Bind click events inside Folder Page Sheet
+ */
+function bindFolderPageEvents() {
+  const overlay = document.getElementById('folderPageOverlay');
+  const closeBtn = document.getElementById('closeFolderPageBtn');
+  const closeHeaderBtn = document.getElementById('closeFolderPageHeaderBtn');
+  const openCreateBtn = document.getElementById('openCreateFolderBtn');
+
+  closeBtn?.addEventListener('click', closeFolderPage);
+  closeHeaderBtn?.addEventListener('click', closeFolderPage);
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) closeFolderPage();
+  });
+
+  openCreateBtn?.addEventListener('click', () => {
+    const createOverlay = document.getElementById('createFolderOverlay');
+    const input = document.getElementById('newFolderNameInput');
+    const previewLabel = document.getElementById('folderPreviewLabel');
+    if (input) input.value = '';
+    if (previewLabel) previewLabel.textContent = 'FOLDER';
+    createOverlay?.classList.add('active');
+    input?.focus();
+  });
+
+  // Folder Nav Rows (Semua, Baru Dihapus)
+  const navRows = document.querySelectorAll('.folder-nav-row');
+  navRows.forEach((row) => {
+    row.addEventListener('click', async () => {
+      const fId = row.getAttribute('data-folder-id');
+      if (!fId) return;
+      currentFolder = fId;
+      closeFolderPage();
+      await loadAndRenderNotes();
+    });
+  });
+
+  // Folder Items (Catatan, Terkunci, Kustom Folders)
+  const folderItems = document.querySelectorAll('.folder-item');
+  folderItems.forEach((item) => {
+    item.addEventListener('click', async (e) => {
+      // Don't navigate if delete folder button was clicked
+      if (e.target.closest('.btn-delete-folder')) return;
+
+      const fId = item.getAttribute('data-folder-id');
+      if (!fId) return;
+
+      if (fId === 'locked') {
+        // Open passcode modal to unlock or setup
+        closeFolderPage();
+        promptLockedFolderAccess();
+        return;
+      }
+
+      currentFolder = fId;
+      closeFolderPage();
+      await loadAndRenderNotes();
+    });
+  });
+
+  // Delete custom folder buttons
+  const deleteFolderBtns = document.querySelectorAll('.btn-delete-folder');
+  deleteFolderBtns.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.getAttribute('data-folder-id');
+      if (!id) return;
+
+      const confirmed = confirm('Hapus folder ini? Catatan di dalamnya akan dipindahkan ke folder Catatan.');
+      if (confirmed) {
+        try {
+          await deleteCustomFolder(id);
+          showToast('Folder berhasil dihapus');
+          if (currentFolder === `folder_${id}`) {
+            currentFolder = 'notes';
+          }
+          await loadAndRenderNotes();
+        } catch (err) {
+          showToast('Gagal menghapus folder', true);
+        }
+      }
+    });
+  });
+}
+
+/**
+ * Handle Locked Folder authentication or initial passcode setup
+ */
+async function promptLockedFolderAccess() {
+  const savedPin = await getSetting('locked_folder_pin');
+  const passcodeOverlay = document.getElementById('passcodeOverlay');
+  const titleEl = document.getElementById('passcodeTitle');
+  const subtextEl = document.getElementById('passcodeSubtext');
+
+  enteredPin = '';
+  updatePinDotsUI();
+
+  if (!savedPin) {
+    // First time: prompt to create a new passcode
+    passcodeSetupStep = 'create';
+    tempPasscode = '';
+    if (titleEl) titleEl.textContent = 'Buat Kata Sandi Baru';
+    if (subtextEl) subtextEl.textContent = 'Tentukan 4 angka PIN untuk mengamankan folder Terkunci.';
+  } else {
+    // Already set: prompt to unlock
+    passcodeSetupStep = 'unlock';
+    if (titleEl) titleEl.textContent = 'Buka Folder Terkunci';
+    if (subtextEl) subtextEl.textContent = 'Masukkan 4 angka PIN Anda untuk membuka folder.';
+  }
+
+  passcodeOverlay?.classList.add('active');
+}
+
+function updatePinDotsUI(isError = false) {
+  const dots = document.querySelectorAll('#pinDotsWrapper .pin-dot');
+  dots.forEach((dot, idx) => {
+    dot.className = 'pin-dot';
+    if (isError) {
+      dot.classList.add('error');
+    } else if (idx < enteredPin.length) {
+      dot.classList.add('filled');
+    }
+  });
+}
+
+function setupPasscodeModalEvents() {
+  const keypad = document.getElementById('numericKeypad');
+  const cancelBtn = document.getElementById('cancelPasscodeBtn');
+  const backspaceBtn = document.getElementById('backspacePinBtn');
+  const passcodeOverlay = document.getElementById('passcodeOverlay');
+  const titleEl = document.getElementById('passcodeTitle');
+  const subtextEl = document.getElementById('passcodeSubtext');
+
+  function closePasscodeModal() {
+    passcodeOverlay?.classList.remove('active');
+    enteredPin = '';
+    tempPasscode = '';
+    passcodeSetupStep = null;
+    updatePinDotsUI();
+  }
+
+  cancelBtn?.addEventListener('click', closePasscodeModal);
+
+  backspaceBtn?.addEventListener('click', () => {
+    if (enteredPin.length > 0) {
+      enteredPin = enteredPin.slice(0, -1);
+      updatePinDotsUI();
+    }
+  });
+
+  const numBtns = keypad?.querySelectorAll('.keypad-btn[data-val]');
+  numBtns?.forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const val = btn.getAttribute('data-val');
+      if (enteredPin.length >= 4) return;
+      enteredPin += val;
+      updatePinDotsUI();
+
+      if (enteredPin.length === 4) {
+        // Complete 4-digit input, evaluate step
+        setTimeout(async () => {
+          await handlePasscodeSubmission(closePasscodeModal, titleEl, subtextEl);
+        }, 150);
+      }
+    });
+  });
+}
+
+async function handlePasscodeSubmission(closeModal, titleEl, subtextEl) {
+  const savedPin = await getSetting('locked_folder_pin');
+
+  if (passcodeSetupStep === 'create') {
+    // Step 1: Save temp and ask to confirm
+    tempPasscode = enteredPin;
+    enteredPin = '';
+    passcodeSetupStep = 'confirm';
+    if (titleEl) titleEl.textContent = 'Konfirmasi Kata Sandi';
+    if (subtextEl) subtextEl.textContent = 'Masukkan kembali kata sandi 4 angka yang baru dibuat.';
+    updatePinDotsUI();
+  } else if (passcodeSetupStep === 'confirm') {
+    // Step 2: Check matching
+    if (enteredPin === tempPasscode) {
+      await setSetting('locked_folder_pin', enteredPin);
+      showToast('Kata sandi folder berhasil dibuat!');
+      isPasscodeUnlocked = true;
+      currentFolder = 'locked';
+      closeModal();
+      await loadAndRenderNotes();
+    } else {
+      updatePinDotsUI(true);
+      showToast('Kata sandi tidak cocok. Silakan coba lagi.', true);
+      setTimeout(() => {
+        enteredPin = '';
+        passcodeSetupStep = 'create';
+        tempPasscode = '';
+        if (titleEl) titleEl.textContent = 'Buat Kata Sandi Baru';
+        if (subtextEl) subtextEl.textContent = 'Tentukan 4 angka PIN untuk mengamankan folder Terkunci.';
+        updatePinDotsUI();
+      }, 600);
+    }
+  } else if (passcodeSetupStep === 'unlock') {
+    // Step 3: Unlocking folder
+    if (enteredPin === savedPin) {
+      isPasscodeUnlocked = true;
+      currentFolder = 'locked';
+      closeModal();
+      showToast('Folder Terkunci dibuka');
+      await loadAndRenderNotes();
+    } else {
+      updatePinDotsUI(true);
+      showToast('Kata sandi salah!', true);
+      setTimeout(() => {
+        enteredPin = '';
+        updatePinDotsUI();
+      }, 600);
+    }
+  }
+}
+
+/**
+ * Bind Empty Trash action button
+ */
+function bindTrashHeaderEvents() {
+  const emptyBtn = document.getElementById('emptyTrashBtn');
+  emptyBtn?.addEventListener('click', async () => {
+    const confirmed = confirm('Kosongkan semua catatan di Baru Dihapus? Semua catatan di sampah akan dihapus secara permanen.');
+    if (confirmed) {
+      try {
+        const deletedCount = await emptyTrash();
+        showToast(`Berhasil mengosongkan ${deletedCount} catatan dari sampah`);
+        await loadAndRenderNotes();
+      } catch (err) {
+        showToast('Gagal mengosongkan sampah', true);
+      }
+    }
+  });
+}
+
 async function initApp() {
   const app = document.getElementById('app');
   if (!app) return;
 
   app.innerHTML = `
     ${renderOfflineBanner()}
-    ${renderHeader(currentViewMode)}
+    ${renderHeader(currentViewMode, getActiveFolderTitle(), false)}
     <main class="app-content">
+      <div id="trashNoticeContainer" style="display: none;"></div>
       ${renderSearchBar()}
       <div id="categoryBarContainer">
         <!-- Rendered dynamically with note counts -->
@@ -1088,6 +1685,11 @@ async function initApp() {
     ${renderEditorModal()}
     ${renderConfirmDialog()}
     ${renderBackupDialog()}
+    <div id="folderPageRoot">
+      ${renderFolderView({}, [])}
+    </div>
+    ${renderCreateFolderModal()}
+    ${renderPasscodeModal()}
   `;
 
   setupInteractions();

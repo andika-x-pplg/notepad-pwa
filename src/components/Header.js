@@ -1,17 +1,15 @@
-export function renderHeader(currentViewMode = 'card') {
+export function renderHeader(currentViewMode = 'card', activeTitle = 'Catatan', isFolderView = false) {
+  const isTrashView = activeTitle === 'Baru Dihapus';
+
   return `
     <header class="app-header">
       <div class="brand-wrapper">
-        <div class="brand-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 20h9"/>
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+        <button id="folderTitleDropdownBtn" class="folder-title-btn" aria-label="Buka Menu Folder">
+          <span class="folder-title-text" id="headerTitleText">${escapeHeaderHtml(activeTitle)}</span>
+          <svg class="folder-arrow-icon ${isFolderView ? 'open' : ''}" width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7 10l5 5 5-5z"/>
           </svg>
-        </div>
-        <div class="brand-text">
-          <h1>Catatan Saya</h1>
-          <p>Catatan Pribadi &amp; Ide Cepat</p>
-        </div>
+        </button>
       </div>
       <div class="header-actions">
         <!-- View Mode Switcher Menu -->
@@ -117,3 +115,14 @@ export function getViewModeIcon(mode) {
     </svg>
   `;
 }
+
+function escapeHeaderHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+

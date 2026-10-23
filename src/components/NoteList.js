@@ -114,15 +114,51 @@ function renderChecklistOrLinesPreview(content = '', maxLines = 4) {
   }).join('');
 }
 
-function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
+function renderNoteItem(note, searchQuery = '', viewMode = 'card', extraOptions = {}) {
+  const { showFolderBadge = false, folderName = '', isTrashView = false } = extraOptions;
   const category = note.category || 'Pribadi';
   const isPinned = Boolean(note.isPinned);
   const catClass = getCategoryColorClass(category);
   const shortDate = formatShortDate(note.updatedAt);
   const fullDate = formatNoteDate(note.updatedAt);
 
+  const folderBadgeHtml = showFolderBadge && folderName
+    ? `<span class="note-folder-tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> ${escapeHtml(folderName)}</span>`
+    : '';
+
+  // Jika di halaman "Baru Dihapus" (Trash), tombol aksi adalah Pulihkan & Hapus Permanen
+  const actionButtonHtml = isTrashView
+    ? `
+      <div class="trash-card-actions">
+        <button class="btn-restore-note" data-note-id="${note.id}" title="Pulihkan Catatan" aria-label="Pulihkan Catatan">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="1 4 1 10 7 10"/>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+          </svg>
+        </button>
+        <button class="btn-permanent-delete-card" data-note-id="${note.id}" title="Hapus Permanen" aria-label="Hapus Permanen">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      </div>
+    `
+    : `
+      <button 
+        class="btn-pin-card ${isPinned ? 'active' : ''}" 
+        data-note-id="${note.id}" 
+        title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+        aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+      >
+        <svg class="pin-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22"/>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+        </svg>
+      </button>
+    `;
+
   // 1. TAMPILAN DAFTAR (LIST VIEW) - Seperti Gambar 2:
-  // Kartu ramping horizontal dengan Judul di atas dan baris kedua: "10/22 isi ringkas catatan..."
   if (viewMode === 'list') {
     const rawSnippet = (note.content || '').replace(/\r?\n/g, ' ').trim();
     return `
@@ -130,6 +166,7 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
         <div class="list-item-main">
           <div class="list-item-title-row">
             <h3 class="list-item-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
+            ${folderBadgeHtml}
             <span class="note-category-tag ${catClass}">
               <span class="category-dot"></span>
               ${escapeHtml(category)}
@@ -140,23 +177,12 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
             <span class="list-item-snippet">${highlightMatch(rawSnippet || 'Tidak ada teks tambahan', searchQuery)}</span>
           </div>
         </div>
-        <button 
-          class="btn-pin-card ${isPinned ? 'active' : ''}" 
-          data-note-id="${note.id}" 
-          title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-          aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-        >
-          <svg class="pin-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="17" x2="12" y2="22"/>
-            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
-          </svg>
-        </button>
+        ${actionButtonHtml}
       </article>
     `;
   }
 
   // 2. TAMPILAN KISI-KISI (GRID VIEW) - Seperti Gambar 4:
-  // Kolom grid 2 kolom, kartu ringkas dengan judul, checklist / baris cuplikan, dan tanggal di bawah
   if (viewMode === 'grid') {
     const hasTodoPattern = (note.content || '').includes('[ ]') || (note.content || '').includes('[x]');
     const previewContent = hasTodoPattern
@@ -166,18 +192,12 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
     return `
       <article class="note-grid-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
         <div class="grid-card-header">
-          <h3 class="grid-card-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
-          <button 
-            class="btn-pin-card ${isPinned ? 'active' : ''}" 
-            data-note-id="${note.id}" 
-            title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-            aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-          >
-            <svg class="pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="17" x2="12" y2="22"/>
-              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
-            </svg>
-          </button>
+          <div class="grid-title-wrapper">
+            <span class="grid-card-date-top">${shortDate}</span>
+            ${folderBadgeHtml}
+            <h3 class="grid-card-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
+          </div>
+          ${actionButtonHtml}
         </div>
 
         <div class="grid-card-body">
@@ -199,21 +219,14 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
   return `
     <article class="note-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
       <div class="note-card-top">
-        <span class="note-category-tag ${catClass}">
-          <span class="category-dot"></span>
-          ${escapeHtml(category)}
-        </span>
-        <button 
-          class="btn-pin-card ${isPinned ? 'active' : ''}" 
-          data-note-id="${note.id}" 
-          title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-          aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
-        >
-          <svg class="pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="12" y1="17" x2="12" y2="22"/>
-            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
-          </svg>
-        </button>
+        <div class="note-card-tags">
+          ${folderBadgeHtml}
+          <span class="note-category-tag ${catClass}">
+            <span class="category-dot"></span>
+            ${escapeHtml(category)}
+          </span>
+        </div>
+        ${actionButtonHtml}
       </div>
 
       <h2 class="note-card-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h2>
@@ -228,7 +241,7 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
 }
 
 export function renderNotesList(notes = [], options = {}) {
-  const { searchQuery = '', selectedCategory = 'all', totalRawNotes = 0, viewMode = 'card' } = options;
+  const { searchQuery = '', selectedCategory = 'all', totalRawNotes = 0, viewMode = 'card', folderMap = {}, currentFolder = 'notes' } = options;
 
   // Case 1: Search query yielded no results
   if (notes.length === 0 && searchQuery.trim() !== '') {
@@ -308,7 +321,14 @@ export function renderNotesList(notes = [], options = {}) {
           <span>DISEMATKAN (${pinnedNotes.length})</span>
         </div>
         <div class="notes-list ${viewClass}">
-          ${pinnedNotes.map((note) => renderNoteItem(note, searchQuery, viewMode)).join('')}
+          ${pinnedNotes.map((note) => {
+            const fName = folderMap[note.folderId] || (note.isLocked ? 'Terkunci' : 'Catatan');
+            return renderNoteItem(note, searchQuery, viewMode, {
+              showFolderBadge: currentFolder === 'all',
+              folderName: fName,
+              isTrashView: currentFolder === 'trash'
+            });
+          }).join('')}
         </div>
       </div>
       `
@@ -329,7 +349,14 @@ export function renderNotesList(notes = [], options = {}) {
             : ''
         }
         <div class="notes-list ${viewClass}">
-          ${otherNotes.map((note) => renderNoteItem(note, searchQuery, viewMode)).join('')}
+          ${otherNotes.map((note) => {
+            const fName = folderMap[note.folderId] || (note.isLocked ? 'Terkunci' : 'Catatan');
+            return renderNoteItem(note, searchQuery, viewMode, {
+              showFolderBadge: currentFolder === 'all',
+              folderName: fName,
+              isTrashView: currentFolder === 'trash'
+            });
+          }).join('')}
         </div>
       </div>
       `

@@ -11,6 +11,19 @@ db.version(1).stores({
   notes: '++id, title, category, isPinned, createdAt, updatedAt'
 });
 
+db.version(2).stores({
+  notes: '++id, title, category, isPinned, folderId, deletedAt, isLocked, createdAt, updatedAt',
+  folders: '++id, name, type, coverType, coverValue, createdAt, updatedAt',
+  settings: 'key, value'
+}).upgrade(async (tx) => {
+  // Migration: default existing notes to folder 'notes' (Catatan)
+  await tx.notes.toCollection().modify((note) => {
+    if (!note.folderId) note.folderId = 'notes';
+    if (note.deletedAt === undefined) note.deletedAt = null;
+    if (note.isLocked === undefined) note.isLocked = false;
+  });
+});
+
 /**
  * Validation helper for note payload
  * @param {Object} noteData
@@ -36,21 +49,44 @@ function validateNotePayload(noteData, isUpdate = false) {
     content,
     category: typeof noteData.category === 'string' && noteData.category.trim() ? noteData.category.trim() : 'Pribadi',
     isPinned: Boolean(noteData.isPinned),
+    folderId: noteData.folderId !== undefined ? noteData.folderId : 'notes',
+    deletedAt: noteData.deletedAt !== undefined ? noteData.deletedAt : null,
+    isLocked: Boolean(noteData.isLocked)
   };
 }
 
 /**
- * Get all notes from IndexedDB, ordered by updatedAt descending
+ * Get all notes from IndexedDB
+ * @param {boolean} includeDeleted
  * @returns {Promise<Array>}
  */
-export async function getAllNotes() {
+export async function getAllNotes(includeDeleted = false) {
   try {
-    const notes = await db.notes.toArray();
+    let notes = await db.notes.toArray();
+    if (!includeDeleted) {
+      notes = notes.filter((n) => !n.deletedAt);
+    }
     // Sort descending by updatedAt (newest first)
     return notes.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (error) {
     console.error('Gagal mengambil daftar catatan:', error);
     throw new Error('Gagal memuat catatan dari database lokal.');
+  }
+}
+
+/**
+ * Get notes in Trash (Baru Dihapus)
+ * @returns {Promise<Array>}
+ */
+export async function getTrashNotes() {
+  try {
+    const notes = await db.notes.toArray();
+    return notes
+      .filter((n) => Boolean(n.deletedAt))
+      .sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+  } catch (error) {
+    console.error('Gagal mengambil catatan di sampah:', error);
+    throw new Error('Gagal memuat catatan baru dihapus.');
   }
 }
 
@@ -125,6 +161,9 @@ export async function updateNote(id, updateData) {
         content: validated.content,
         category: validated.category || existing.category || 'Pribadi',
         isPinned: validated.isPinned !== undefined ? validated.isPinned : existing.isPinned,
+        folderId: validated.folderId !== undefined ? validated.folderId : (existing.folderId || 'notes'),
+        isLocked: validated.isLocked !== undefined ? validated.isLocked : Boolean(existing.isLocked),
+        deletedAt: validated.deletedAt !== undefined ? validated.deletedAt : (existing.deletedAt || null),
         updatedAt: now
       });
 
@@ -132,6 +171,101 @@ export async function updateNote(id, updateData) {
     });
   } catch (error) {
     console.error(`Gagal memperbarui catatan ID ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Soft-delete a note (Move to "Baru Dihapus")
+ * @param {number|string} id
+ */
+export async function softDeleteNote(id) {
+  try {
+    const numericId = Number(id);
+    if (!numericId || Number.isNaN(numericId)) {
+      throw new Error('ID catatan tidak valid');
+    }
+
+    return await db.transaction('rw', db.notes, async () => {
+      const existing = await db.notes.get(numericId);
+      if (!existing) {
+        throw new Error('Catatan tidak ditemukan untuk dihapus');
+      }
+      await db.notes.update(numericId, {
+        deletedAt: Date.now(),
+        isPinned: false
+      });
+    });
+  } catch (error) {
+    console.error(`Gagal memindahkan catatan ID ${id} ke sampah:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Restore a soft-deleted note from "Baru Dihapus"
+ * @param {number|string} id
+ */
+export async function restoreNote(id) {
+  try {
+    const numericId = Number(id);
+    if (!numericId || Number.isNaN(numericId)) {
+      throw new Error('ID catatan tidak valid');
+    }
+
+    return await db.transaction('rw', db.notes, async () => {
+      const existing = await db.notes.get(numericId);
+      if (!existing) {
+        throw new Error('Catatan tidak ditemukan');
+      }
+      await db.notes.update(numericId, {
+        deletedAt: null,
+        updatedAt: Date.now()
+      });
+    });
+  } catch (error) {
+    console.error(`Gagal memulihkan catatan ID ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Permanently delete a note from IndexedDB
+ * @param {number|string} id
+ */
+export async function deleteNote(id) {
+  try {
+    const numericId = Number(id);
+    if (!numericId || Number.isNaN(numericId)) {
+      throw new Error('ID catatan tidak valid');
+    }
+
+    return await db.transaction('rw', db.notes, async () => {
+      const existing = await db.notes.get(numericId);
+      if (!existing) {
+        throw new Error('Catatan tidak ditemukan untuk dihapus');
+      }
+      await db.notes.delete(numericId);
+    });
+  } catch (error) {
+    console.error(`Gagal menghapus permanen catatan ID ${id}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Permanently empty all notes in trash
+ */
+export async function emptyTrash() {
+  try {
+    return await db.transaction('rw', db.notes, async () => {
+      const trash = await db.notes.toArray();
+      const trashIds = trash.filter((n) => Boolean(n.deletedAt)).map((n) => n.id);
+      await db.notes.bulkDelete(trashIds);
+      return trashIds.length;
+    });
+  } catch (error) {
+    console.error('Gagal mengosongkan sampah:', error);
     throw error;
   }
 }
@@ -165,28 +299,73 @@ export async function togglePinNote(id) {
   }
 }
 
-/**
- * Delete a note by ID
- * @param {number|string} id
- * @returns {Promise<void>}
- */
-export async function deleteNote(id) {
+// ==========================================
+// FOLDER CRUD & SETTINGS
+// ==========================================
+
+export async function getAllCustomFolders() {
+  try {
+    return await db.folders.toArray();
+  } catch (error) {
+    console.error('Gagal mengambil folder kustom:', error);
+    return [];
+  }
+}
+
+export async function createCustomFolder({ name, coverType = 'color', coverValue = '#3b82f6' }) {
+  try {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      throw new Error('Nama folder tidak boleh kosong');
+    }
+    const now = Date.now();
+    const folderRecord = {
+      name: trimmed,
+      coverType, // 'color' | 'gradient' | 'template'
+      coverValue,
+      createdAt: now,
+      updatedAt: now
+    };
+    return await db.folders.add(folderRecord);
+  } catch (error) {
+    console.error('Gagal membuat folder baru:', error);
+    throw error;
+  }
+}
+
+export async function deleteCustomFolder(id) {
   try {
     const numericId = Number(id);
-    if (!numericId || Number.isNaN(numericId)) {
-      throw new Error('ID catatan tidak valid');
-    }
-
-    return await db.transaction('rw', db.notes, async () => {
-      const existing = await db.notes.get(numericId);
-      if (!existing) {
-        throw new Error('Catatan tidak ditemukan untuk dihapus');
+    return await db.transaction('rw', db.folders, db.notes, async () => {
+      await db.folders.delete(numericId);
+      // Reassign any notes in this folder back to default 'notes'
+      const folderKey = `folder_${numericId}`;
+      const notesInFolder = await db.notes.where('folderId').equals(folderKey).toArray();
+      for (const n of notesInFolder) {
+        await db.notes.update(n.id, { folderId: 'notes' });
       }
-      await db.notes.delete(numericId);
     });
   } catch (error) {
-    console.error(`Gagal menghapus catatan ID ${id}:`, error);
+    console.error('Gagal menghapus folder:', error);
     throw error;
+  }
+}
+
+// App Settings (Lock Passcode)
+export async function getSetting(key) {
+  try {
+    const item = await db.settings.get(key);
+    return item ? item.value : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function setSetting(key, value) {
+  try {
+    await db.settings.put({ key, value });
+  } catch (e) {
+    console.error('Gagal menyimpan pengaturan:', e);
   }
 }
 
