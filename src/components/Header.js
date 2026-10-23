@@ -1,4 +1,4 @@
-export function renderHeader() {
+export function renderHeader(currentViewMode = 'card') {
   return `
     <header class="app-header">
       <div class="brand-wrapper">
@@ -10,10 +10,48 @@ export function renderHeader() {
         </div>
         <div class="brand-text">
           <h1>Catatan Saya</h1>
-          <p>Catatan Pribadi & Ide Cepat</p>
+          <p>Catatan Pribadi &amp; Ide Cepat</p>
         </div>
       </div>
       <div class="header-actions">
+        <!-- View Mode Switcher Menu -->
+        <div class="view-mode-menu-container" id="viewModeMenuContainer">
+          <button id="viewModeBtn" class="theme-toggle-btn" title="Pilih Tampilan" aria-label="Pilih Tampilan" aria-haspopup="true" aria-expanded="false">
+            <span id="viewModeBtnIcon">
+              ${getViewModeIcon(currentViewMode)}
+            </span>
+          </button>
+          <div id="viewModeDropdown" class="view-mode-dropdown" role="menu" aria-hidden="true">
+            <button class="view-mode-option ${currentViewMode === 'list' ? 'active' : ''}" data-view="list" role="menuitem">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"/>
+                <line x1="8" y1="12" x2="21" y2="12"/>
+                <line x1="8" y1="18" x2="21" y2="18"/>
+                <line x1="3" y1="6" x2="3.01" y2="6"/>
+                <line x1="3" y1="12" x2="3.01" y2="12"/>
+                <line x1="3" y1="18" x2="3.01" y2="18"/>
+              </svg>
+              <span>Tampilan Daftar</span>
+            </button>
+            <button class="view-mode-option ${currentViewMode === 'card' ? 'active' : ''}" data-view="card" role="menuitem">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="6" rx="2"/>
+                <rect x="3" y="14" width="18" height="6" rx="2"/>
+              </svg>
+              <span>Tampilan Kartu</span>
+            </button>
+            <button class="view-mode-option ${currentViewMode === 'grid' ? 'active' : ''}" data-view="grid" role="menuitem">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+                <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+                <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              </svg>
+              <span>Tampilan Kisi</span>
+            </button>
+          </div>
+        </div>
+
         <button id="backupDataBtn" class="theme-toggle-btn" title="Perlindungan & Cadangan Data" aria-label="Cadangkan Data">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -45,5 +83,37 @@ export function renderHeader() {
         </button>
       </div>
     </header>
+  `;
+}
+
+export function getViewModeIcon(mode) {
+  if (mode === 'list') {
+    return `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="8" y1="6" x2="21" y2="6"/>
+        <line x1="8" y1="12" x2="21" y2="12"/>
+        <line x1="8" y1="18" x2="21" y2="18"/>
+        <line x1="3" y1="6" x2="3.01" y2="6"/>
+        <line x1="3" y1="12" x2="3.01" y2="12"/>
+        <line x1="3" y1="18" x2="3.01" y2="18"/>
+      </svg>
+    `;
+  }
+  if (mode === 'grid') {
+    return `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+        <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+      </svg>
+    `;
+  }
+  // Default 'card' icon
+  return `
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="4" width="18" height="6" rx="2"/>
+      <rect x="3" y="14" width="18" height="6" rx="2"/>
+    </svg>
   `;
 }

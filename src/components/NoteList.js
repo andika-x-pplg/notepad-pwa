@@ -65,11 +65,137 @@ function getCategoryColorClass(cat) {
   return 'cat-pribadi';
 }
 
-function renderNoteCard(note, searchQuery = '') {
+function formatShortDate(timestamp) {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${m}/${d}`;
+}
+
+/**
+ * Format first lines or items as checklist preview
+ * Detects checklist items like [x], [ ], - [ ], 1., etc. or plain bullet lines
+ */
+function renderChecklistOrLinesPreview(content = '', maxLines = 4) {
+  if (!content || !content.trim()) return '';
+  
+  const rawLines = content.split('\n').map(l => l.trim()).filter(Boolean);
+  const displayLines = rawLines.slice(0, maxLines);
+  
+  const hasChecklistPattern = rawLines.some(l => 
+    /^(?:[-*+]\s+)?\[([ xX])\]\s*(.*)/.test(l) ||
+    /^(?:[-*•]|\d+\.)\s+/.test(l)
+  );
+
+  return displayLines.map((line) => {
+    // Check if line is markdown checkbox [x] or [ ]
+    const checkboxMatch = line.match(/^(?:[-*+]\s+)?\[([ xX])\]\s*(.*)/);
+    if (checkboxMatch) {
+      const isChecked = checkboxMatch[1].toLowerCase() === 'x';
+      const itemText = checkboxMatch[2] || '';
+      return `
+        <div class="note-todo-item ${isChecked ? 'is-completed' : ''}">
+          <span class="todo-mock-box ${isChecked ? 'checked' : ''}">
+            ${isChecked ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+          </span>
+          <span class="todo-mock-text">${escapeHtml(itemText)}</span>
+        </div>
+      `;
+    }
+
+    // Default bullet/text line
+    return `
+      <div class="note-line-item">
+        <span class="line-dot"></span>
+        <span class="line-text">${escapeHtml(line)}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderNoteItem(note, searchQuery = '', viewMode = 'card') {
   const category = note.category || 'Pribadi';
   const isPinned = Boolean(note.isPinned);
   const catClass = getCategoryColorClass(category);
+  const shortDate = formatShortDate(note.updatedAt);
+  const fullDate = formatNoteDate(note.updatedAt);
 
+  // 1. TAMPILAN DAFTAR (LIST VIEW) - Seperti Gambar 2:
+  // Kartu ramping horizontal dengan Judul di atas dan baris kedua: "10/22 isi ringkas catatan..."
+  if (viewMode === 'list') {
+    const rawSnippet = (note.content || '').replace(/\r?\n/g, ' ').trim();
+    return `
+      <article class="note-list-item ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+        <div class="list-item-main">
+          <div class="list-item-title-row">
+            <h3 class="list-item-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
+            <span class="note-category-tag ${catClass}">
+              <span class="category-dot"></span>
+              ${escapeHtml(category)}
+            </span>
+          </div>
+          <div class="list-item-sub-row">
+            <span class="list-item-date">${shortDate}</span>
+            <span class="list-item-snippet">${highlightMatch(rawSnippet || 'Tidak ada teks tambahan', searchQuery)}</span>
+          </div>
+        </div>
+        <button 
+          class="btn-pin-card ${isPinned ? 'active' : ''}" 
+          data-note-id="${note.id}" 
+          title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+          aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+        >
+          <svg class="pin-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="17" x2="12" y2="22"/>
+            <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+          </svg>
+        </button>
+      </article>
+    `;
+  }
+
+  // 2. TAMPILAN KISI-KISI (GRID VIEW) - Seperti Gambar 4:
+  // Kolom grid 2 kolom, kartu ringkas dengan judul, checklist / baris cuplikan, dan tanggal di bawah
+  if (viewMode === 'grid') {
+    const hasTodoPattern = (note.content || '').includes('[ ]') || (note.content || '').includes('[x]');
+    const previewContent = hasTodoPattern
+      ? renderChecklistOrLinesPreview(note.content, 4)
+      : `<p class="grid-card-text">${highlightMatch(note.content || 'Tidak ada teks tambahan...', searchQuery)}</p>`;
+
+    return `
+      <article class="note-grid-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+        <div class="grid-card-header">
+          <h3 class="grid-card-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
+          <button 
+            class="btn-pin-card ${isPinned ? 'active' : ''}" 
+            data-note-id="${note.id}" 
+            title="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+            aria-label="${isPinned ? 'Lepas sematan' : 'Sematkan ke atas'}"
+          >
+            <svg class="pin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="17" x2="12" y2="22"/>
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 0-2H8a1 1 0 0 0 0 2h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="grid-card-body">
+          ${previewContent}
+        </div>
+
+        <div class="grid-card-footer">
+          <span class="grid-card-date">${shortDate}</span>
+          <span class="note-category-tag ${catClass}">
+            <span class="category-dot"></span>
+            ${escapeHtml(category)}
+          </span>
+        </div>
+      </article>
+    `;
+  }
+
+  // 3. TAMPILAN KARTU (CARD VIEW - Default sebelumnya):
   return `
     <article class="note-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
       <div class="note-card-top">
@@ -94,7 +220,7 @@ function renderNoteCard(note, searchQuery = '') {
       <p class="note-card-snippet">${highlightMatch(note.content || 'Tidak ada teks tambahan...', searchQuery)}</p>
       
       <div class="note-card-meta">
-        <span class="note-date">${formatNoteDate(note.updatedAt)}</span>
+        <span class="note-date">${fullDate}</span>
         ${isPinned ? '<span class="pinned-indicator"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5v6l1 1 1-1v-6h5v-2l-2-2z"/></svg> Disematkan</span>' : ''}
       </div>
     </article>
@@ -102,7 +228,7 @@ function renderNoteCard(note, searchQuery = '') {
 }
 
 export function renderNotesList(notes = [], options = {}) {
-  const { searchQuery = '', selectedCategory = 'all', totalRawNotes = 0 } = options;
+  const { searchQuery = '', selectedCategory = 'all', totalRawNotes = 0, viewMode = 'card' } = options;
 
   // Case 1: Search query yielded no results
   if (notes.length === 0 && searchQuery.trim() !== '') {
@@ -160,8 +286,8 @@ export function renderNotesList(notes = [], options = {}) {
   const pinnedNotes = notes.filter((n) => Boolean(n.isPinned));
   const otherNotes = notes.filter((n) => !n.isPinned);
 
-  // If there are pinned notes and we're not actively searching or filtering, group them elegantly
-  // When searching, still show pinned on top but keep a clear indication
+  const viewClass = viewMode === 'grid' ? 'notes-view-grid' : viewMode === 'list' ? 'notes-view-list' : 'notes-view-card';
+
   return `
     <div class="notes-section-header">
       <span class="section-title">
@@ -181,8 +307,8 @@ export function renderNotesList(notes = [], options = {}) {
           </svg>
           <span>DISEMATKAN (${pinnedNotes.length})</span>
         </div>
-        <div class="notes-list">
-          ${pinnedNotes.map((note) => renderNoteCard(note, searchQuery)).join('')}
+        <div class="notes-list ${viewClass}">
+          ${pinnedNotes.map((note) => renderNoteItem(note, searchQuery, viewMode)).join('')}
         </div>
       </div>
       `
@@ -202,8 +328,8 @@ export function renderNotesList(notes = [], options = {}) {
         `
             : ''
         }
-        <div class="notes-list">
-          ${otherNotes.map((note) => renderNoteCard(note, searchQuery)).join('')}
+        <div class="notes-list ${viewClass}">
+          ${otherNotes.map((note) => renderNoteItem(note, searchQuery, viewMode)).join('')}
         </div>
       </div>
       `

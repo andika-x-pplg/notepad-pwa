@@ -1,5 +1,5 @@
 import './styles/app.css';
-import { renderHeader } from './components/Header.js';
+import { renderHeader, getViewModeIcon } from './components/Header.js';
 import { renderSearchBar } from './components/SearchBar.js';
 import { renderNotesList } from './components/NoteList.js';
 import { renderEditorModal, renderFabAddButton } from './components/Editor.js';
@@ -19,9 +19,10 @@ let saveQueued = false;
 let currentSavePromise = null;
 let saveRevision = 0;
 
-// Filter & Search State
+// Filter & Search & View Mode State
 let currentSearchQuery = '';
 let currentCategoryFilter = 'all'; // 'all' or category name
+let currentViewMode = localStorage.getItem('notepad_view_mode') || 'card'; // 'list' | 'card' | 'grid'
 let cachedAllNotes = [];
 
 const DEBOUNCE_DELAY_MS = 500;
@@ -287,7 +288,8 @@ async function loadAndRenderNotes() {
     container.innerHTML = renderNotesList(filtered, {
       searchQuery: currentSearchQuery,
       selectedCategory: currentCategoryFilter,
-      totalRawNotes: cachedAllNotes.length
+      totalRawNotes: cachedAllNotes.length,
+      viewMode: currentViewMode
     });
 
     bindNoteCardEvents();
@@ -310,9 +312,9 @@ function bindCategoryFilterEvents() {
 }
 
 function bindNoteCardEvents() {
-  // Click on card to open editor
-  const noteCards = document.querySelectorAll('.note-card');
-  noteCards.forEach((card) => {
+  // Click on card/item to open editor (supporting .note-card, .note-list-item, .note-grid-card)
+  const noteItems = document.querySelectorAll('.note-card, .note-list-item, .note-grid-card');
+  noteItems.forEach((card) => {
     card.addEventListener('click', async (e) => {
       // Don't open editor if pin button was clicked
       if (e.target.closest('.btn-pin-card')) return;
@@ -791,6 +793,78 @@ function setupInteractions() {
     }
   });
 
+  // View Mode Switcher (Tampilan Daftar, Tampilan Kartu, Tampilan Kisi)
+  const viewModeBtn = document.getElementById('viewModeBtn');
+  const viewModeDropdown = document.getElementById('viewModeDropdown');
+  const viewModeOptions = document.querySelectorAll('.view-mode-option');
+  const viewModeBtnIcon = document.getElementById('viewModeBtnIcon');
+
+  function closeViewModeDropdown() {
+    if (viewModeDropdown && viewModeDropdown.classList.contains('active')) {
+      viewModeDropdown.classList.remove('active');
+      viewModeDropdown.setAttribute('aria-hidden', 'true');
+      viewModeBtn?.setAttribute('aria-expanded', 'false');
+    }
+  }
+
+  viewModeBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isNowActive = viewModeDropdown?.classList.toggle('active');
+    viewModeDropdown?.setAttribute('aria-hidden', String(!isNowActive));
+    viewModeBtn?.setAttribute('aria-expanded', String(isNowActive));
+  });
+
+  viewModeOptions.forEach((option) => {
+    option.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const selectedMode = option.getAttribute('data-view');
+      if (!selectedMode || selectedMode === currentViewMode) {
+        closeViewModeDropdown();
+        return;
+      }
+
+      currentViewMode = selectedMode;
+      localStorage.setItem('notepad_view_mode', currentViewMode);
+
+      // Update button icon & options active state
+      if (viewModeBtnIcon) {
+        viewModeBtnIcon.innerHTML = getViewModeIcon(currentViewMode);
+      }
+      viewModeOptions.forEach((opt) => {
+        opt.classList.toggle('active', opt.getAttribute('data-view') === currentViewMode);
+      });
+
+      closeViewModeDropdown();
+
+      // Re-render notes with selected layout
+      const container = document.getElementById('notesContainer');
+      if (container) {
+        const filtered = getFilteredNotes();
+        container.innerHTML = renderNotesList(filtered, {
+          searchQuery: currentSearchQuery,
+          selectedCategory: currentCategoryFilter,
+          totalRawNotes: cachedAllNotes.length,
+          viewMode: currentViewMode
+        });
+        bindNoteCardEvents();
+      }
+
+      const modeNames = {
+        list: 'Tampilan Daftar',
+        card: 'Tampilan Kartu',
+        grid: 'Tampilan Kisi'
+      };
+      showToast(`Mengalihkan ke ${modeNames[currentViewMode] || currentViewMode}`);
+    });
+  });
+
+  // Close dropdown on clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#viewModeMenuContainer')) {
+      closeViewModeDropdown();
+    }
+  });
+
   // Theme switcher
   let isDark = false;
   themeToggleBtn?.addEventListener('click', () => {
@@ -1000,7 +1074,7 @@ async function initApp() {
 
   app.innerHTML = `
     ${renderOfflineBanner()}
-    ${renderHeader()}
+    ${renderHeader(currentViewMode)}
     <main class="app-content">
       ${renderSearchBar()}
       <div id="categoryBarContainer">
