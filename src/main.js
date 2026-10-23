@@ -2,7 +2,13 @@ import './styles/app.css';
 import { renderHeader, getViewModeIcon } from './components/Header.js';
 import { renderSearchBar } from './components/SearchBar.js';
 import { renderNotesList } from './components/NoteList.js';
-import { renderEditorModal, renderFabAddButton } from './components/Editor.js';
+import {
+  renderEditorModal,
+  renderFabAddButton,
+  renderDrawingModal,
+  renderMoveNoteModal,
+  renderImageLightboxModal
+} from './components/Editor.js';
 import {
   renderFolderView,
   renderCreateFolderModal,
@@ -37,10 +43,23 @@ let lastSavedCategory = 'Pribadi';
 let lastSavedPinned = false;
 let lastSavedFolderId = 'notes';
 let lastSavedIsLocked = false;
+let lastSavedTheme = 'default';
+let lastSavedMedia = [];
+let lastSavedIsChecklist = false;
+
 let currentEditingCategory = 'Pribadi';
 let currentEditingPinned = false;
 let currentEditingFolderId = 'notes';
 let currentEditingIsLocked = false;
+let currentEditingTheme = 'default';
+let currentEditingMedia = [];
+let currentEditingIsChecklist = false;
+
+let pendingPasscodeAction = null;
+let currentLightboxScale = 1;
+const SCENIC_THEMES = ['scenic_mountains', 'scenic_city', 'scenic_nature'];
+let scenicIndex = 0;
+
 let debounceTimer = null;
 let isSaving = false;
 let saveQueued = false;
@@ -586,6 +605,401 @@ function updateEditorPinUI(isPinned) {
   }
 }
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function hexToRgba(hex, alpha = 1) {
+  if (!hex || hex[0] !== '#') return hex;
+  const c = hex.slice(1);
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function closeEditorPopups() {
+  document.getElementById('editorMoreDropdown')?.classList.remove('active');
+  document.getElementById('editorCameraMenu')?.classList.remove('active');
+  document.getElementById('editorThemeSheet')?.classList.remove('active');
+  document.getElementById('editorMoreBtn')?.setAttribute('aria-expanded', 'false');
+}
+
+function updateMoreMenuLabels() {
+  const pinText = document.getElementById('moreMenuPinText');
+  const lockText = document.getElementById('moreMenuLockText');
+  if (pinText) {
+    pinText.textContent = currentEditingPinned ? 'Lepas Sematan' : 'Sematkan';
+  }
+  if (lockText) {
+    lockText.textContent = currentEditingIsLocked ? 'Buka Kunci' : 'Kunci';
+  }
+}
+
+function applyEditorTheme(themeId) {
+  currentEditingTheme = themeId || 'default';
+  const panel = document.getElementById('editorPanel');
+  if (panel) {
+    panel.setAttribute('data-note-theme', currentEditingTheme);
+  }
+
+  // Highlight active theme swatch
+  const swatches = document.querySelectorAll('.theme-swatch-item');
+  swatches.forEach((sw) => {
+    const swId = sw.getAttribute('data-theme-id');
+    if (swId === 'scenic_random') {
+      sw.classList.toggle('active', SCENIC_THEMES.includes(currentEditingTheme));
+    } else {
+      sw.classList.toggle('active', swId === currentEditingTheme);
+    }
+  });
+}
+
+function serializeChecklistItems() {
+  const container = document.getElementById('editorChecklistContainer');
+  if (!container) return '';
+  const rows = container.querySelectorAll('.checklist-row');
+  const lines = [];
+  rows.forEach((row) => {
+    const isTextOnly = row.classList.contains('is-text-only');
+    const text = row.querySelector('.checklist-text-input')?.value || '';
+    if (isTextOnly) {
+      lines.push(text);
+    } else {
+      const isChecked = row.querySelector('.checklist-checkbox')?.classList.contains('checked');
+      lines.push(isChecked ? `- [x] ${text}` : `- [ ] ${text}`);
+    }
+  });
+  return lines.join('\n');
+}
+
+function renderChecklistFromText(text = '') {
+  const container = document.getElementById('editorChecklistContainer');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const rawLines = text ? text.split('\n') : [''];
+  const lines = rawLines.length > 0 ? rawLines : [''];
+
+  lines.forEach((line) => {
+    const match = line.match(/^(?:[-*+]\s+)?\[([ xX])\]\s*(.*)$/);
+    if (match) {
+      const isChecked = match[1].toLowerCase() === 'x';
+      const textVal = match[2];
+      createChecklistRow(container, textVal, isChecked, null, false);
+    } else {
+      // Baris teks biasa yang digabung di dalam catatan checklist
+      createChecklistRow(container, line, false, null, true);
+    }
+  });
+}
+
+function createChecklistRow(container, text = '', isChecked = false, insertAfterElement = null, isTextOnly = false) {
+  const row = document.createElement('div');
+  row.className = `checklist-row ${isChecked ? 'is-completed' : ''} ${isTextOnly ? 'is-text-only' : ''}`;
+  row.innerHTML = `
+    <button type="button" class="checklist-checkbox ${isChecked ? 'checked' : ''}" aria-label="Centang Catatan" style="${isTextOnly ? 'display: none;' : ''}">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </button>
+    <input type="text" class="checklist-text-input" value="${escapeHtml(text)}" placeholder="${isTextOnly ? 'Ketik catatan...' : 'Ketik butir catatan...'}" />
+    <button type="button" class="checklist-delete-btn" title="Hapus Butir">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  `;
+
+  const cb = row.querySelector('.checklist-checkbox');
+  const input = row.querySelector('.checklist-text-input');
+  const delBtn = row.querySelector('.checklist-delete-btn');
+
+  cb.addEventListener('click', () => {
+    cb.classList.toggle('checked');
+    row.classList.toggle('is-completed', cb.classList.contains('checked'));
+    handleEditorInput();
+  });
+
+  input.addEventListener('input', () => {
+    handleEditorInput();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // Jika baris saat ini adalah text-only, baris baru juga text-only
+      // Jika checklist, baris baru adalah checklist item
+      const currentIsTextOnly = row.classList.contains('is-text-only');
+      const newRow = createChecklistRow(container, '', false, row, currentIsTextOnly);
+      newRow.querySelector('.checklist-text-input')?.focus();
+      handleEditorInput();
+    } else if (e.key === 'Backspace' && input.selectionStart === 0 && input.selectionEnd === 0) {
+      // JIKA MASIH BERUPA CHECKLIST:
+      // Tekan Backspace 1 kali di posisi awal:
+      // Jangan langsung hapus ke baris atas! Ubah baris ini menjadi teks biasa (hilangkan kolom checklist/checkboxnya saja)
+      // Kursor tetap diam di tempat sehingga pengguna bisa lanjut mengetik teks biasa (gabung checklist dan bukan checklist).
+      if (!row.classList.contains('is-text-only')) {
+        e.preventDefault();
+        row.classList.add('is-text-only');
+        cb.style.display = 'none';
+        cb.classList.remove('checked');
+        row.classList.remove('is-completed');
+        input.placeholder = 'Ketik catatan...';
+        handleEditorInput();
+        return;
+      }
+
+      // JIKA SUDAH BERUPA TEKS BIASA (ATAU CHECKBOX SUDAH HILANG):
+      // Tekan Backspace di posisi awal teks -> gabung ke baris sebelumnya
+      const prevRow = row.previousElementSibling;
+      const allRows = container.querySelectorAll('.checklist-row');
+      if (allRows.length > 1) {
+        e.preventDefault();
+        const prevInput = prevRow?.querySelector('.checklist-text-input');
+        if (prevInput) {
+          const prevLen = prevInput.value.length;
+          if (input.value) {
+            prevInput.value += input.value;
+          }
+          prevInput.focus();
+          prevInput.setSelectionRange(prevLen, prevLen);
+        }
+        row.remove();
+        handleEditorInput();
+      }
+    }
+  });
+
+  delBtn.addEventListener('click', () => {
+    const prevRow = row.previousElementSibling;
+    const nextRow = row.nextElementSibling;
+    const allRows = container.querySelectorAll('.checklist-row');
+    if (allRows.length > 1) {
+      row.remove();
+      const targetInput = (prevRow || nextRow)?.querySelector('.checklist-text-input');
+      targetInput?.focus();
+    } else {
+      input.value = '';
+      cb.classList.remove('checked');
+      row.classList.remove('is-completed');
+      input.focus();
+    }
+    handleEditorInput();
+  });
+
+  if (insertAfterElement && insertAfterElement.nextSibling) {
+    container.insertBefore(row, insertAfterElement.nextSibling);
+  } else if (insertAfterElement) {
+    container.appendChild(row);
+  } else {
+    container.appendChild(row);
+  }
+
+  return row;
+}
+
+function updateChecklistModeUI() {
+  const bodyInput = document.getElementById('noteBodyInput');
+  const checklistContainer = document.getElementById('editorChecklistContainer');
+  const checklistBtn = document.getElementById('editorChecklistBtn');
+
+  if (currentEditingIsChecklist) {
+    if (bodyInput) bodyInput.style.display = 'none';
+    if (checklistContainer) {
+      checklistContainer.style.display = 'flex';
+      renderChecklistFromText(bodyInput?.value || '');
+    }
+    checklistBtn?.classList.add('active');
+  } else {
+    if (bodyInput) bodyInput.style.display = 'block';
+    if (checklistContainer) checklistContainer.style.display = 'none';
+    checklistBtn?.classList.remove('active');
+  }
+}
+
+function renderEditorMediaGallery() {
+  const gallery = document.getElementById('editorMediaGallery');
+  if (!gallery) return;
+
+  if (currentEditingMedia.length === 0) {
+    gallery.style.display = 'none';
+    gallery.innerHTML = '';
+    return;
+  }
+
+  gallery.style.display = 'flex';
+  gallery.innerHTML = currentEditingMedia.map((item, idx) => {
+    if (item.type === 'video') {
+      return `
+        <div class="editor-media-item" data-media-id="${item.id}">
+          <button type="button" class="btn-remove-media" data-index="${idx}" title="Hapus Video">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+          <video class="editor-media-video" controls preload="metadata" playsinline>
+            <source src="${item.url}">
+            Browser Anda tidak mendukung pemutar video.
+          </video>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="editor-media-item" data-media-id="${item.id}">
+        <button type="button" class="btn-remove-media" data-index="${idx}" title="Hapus Foto">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <img src="${item.url}" alt="${escapeHtml(item.name || 'Foto')}" class="editor-media-img" data-index="${idx}" />
+        <span class="media-pinch-hint">Ketuk untuk memperbesar / cubit</span>
+      </div>
+    `;
+  }).join('');
+
+  gallery.querySelectorAll('.btn-remove-media').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const idx = Number(btn.getAttribute('data-index'));
+      currentEditingMedia.splice(idx, 1);
+      renderEditorMediaGallery();
+      handleEditorInput();
+    });
+  });
+
+  gallery.querySelectorAll('.editor-media-img').forEach((img) => {
+    img.addEventListener('click', () => {
+      openImageLightbox(img.src, img.alt);
+    });
+  });
+}
+
+function openImageLightbox(src, title = 'Foto') {
+  const overlay = document.getElementById('imageLightboxOverlay');
+  const img = document.getElementById('lightboxImage');
+  const titleEl = document.getElementById('lightboxTitle');
+  const zoomText = document.getElementById('lightboxZoomLevel');
+
+  if (!overlay || !img) return;
+
+  currentLightboxScale = 1;
+  img.src = src;
+  img.style.transform = 'scale(1)';
+  if (titleEl) titleEl.textContent = title;
+  if (zoomText) zoomText.textContent = '100%';
+
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function closeImageLightbox() {
+  const overlay = document.getElementById('imageLightboxOverlay');
+  if (overlay) {
+    overlay.classList.remove('active');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function openMoveNoteModal() {
+  const overlay = document.getElementById('moveNoteOverlay');
+  const listContainer = document.getElementById('moveFolderListContainer');
+  if (!overlay || !listContainer) return;
+
+  const fMap = getFolderMap();
+  let html = `
+    <button type="button" class="move-folder-item ${currentEditingFolderId === 'notes' ? 'current-folder' : ''}" data-target-folder="notes">
+      <div class="move-folder-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      </div>
+      <span class="move-folder-name">Catatan</span>
+      ${currentEditingFolderId === 'notes' ? '<span class="move-folder-count">Saat Ini</span>' : ''}
+    </button>
+  `;
+
+  cachedCustomFolders.forEach((f) => {
+    const fId = `folder_${f.id}`;
+    html += `
+      <button type="button" class="move-folder-item ${currentEditingFolderId === fId ? 'current-folder' : ''}" data-target-folder="${fId}">
+        <div class="move-folder-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <span class="move-folder-name">${escapeHtml(f.name)}</span>
+        ${currentEditingFolderId === fId ? '<span class="move-folder-count">Saat Ini</span>' : ''}
+      </button>
+    `;
+  });
+
+  listContainer.innerHTML = html;
+
+  listContainer.querySelectorAll('.move-folder-item').forEach((item) => {
+    item.addEventListener('click', async () => {
+      const targetFolder = item.getAttribute('data-target-folder');
+      if (!targetFolder || targetFolder === currentEditingFolderId) {
+        overlay.classList.remove('active');
+        return;
+      }
+
+      currentEditingFolderId = targetFolder;
+      currentEditingIsLocked = false;
+      const targetName = fMap[targetFolder] || 'Catatan';
+      const folderTitleEl = document.getElementById('editorFolderTitle');
+      if (folderTitleEl) folderTitleEl.textContent = targetName;
+
+      await performSave();
+      overlay.classList.remove('active');
+      showToast(`Catatan dipindahkan ke folder "${targetName}"`);
+    });
+  });
+
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
+function readAndCompressImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function openEditor(note = null) {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
@@ -597,6 +1011,7 @@ function openEditor(note = null) {
   const bodyInput = document.getElementById('noteBodyInput');
   const deleteBtn = document.getElementById('deleteNoteBtn');
   const charCounter = document.getElementById('editorWordCount');
+  const folderTitleEl = document.getElementById('editorFolderTitle');
 
   if (!overlay || !titleInput || !bodyInput) return;
 
@@ -608,10 +1023,17 @@ function openEditor(note = null) {
     currentEditingPinned = Boolean(note.isPinned);
     currentEditingFolderId = note.folderId || 'notes';
     currentEditingIsLocked = Boolean(note.isLocked);
+    currentEditingTheme = note.themeBackground || 'default';
+    currentEditingMedia = Array.isArray(note.media) ? [...note.media] : [];
+    currentEditingIsChecklist = Boolean(note.isChecklist);
+
     lastSavedCategory = currentEditingCategory;
     lastSavedPinned = currentEditingPinned;
     lastSavedFolderId = currentEditingFolderId;
     lastSavedIsLocked = currentEditingIsLocked;
+    lastSavedTheme = currentEditingTheme;
+    lastSavedMedia = [...currentEditingMedia];
+    lastSavedIsChecklist = currentEditingIsChecklist;
 
     titleInput.value = lastSavedTitle;
     bodyInput.value = lastSavedContent;
@@ -625,7 +1047,10 @@ function openEditor(note = null) {
     lastSavedPinned = false;
     currentEditingCategory = lastSavedCategory;
     currentEditingPinned = false;
-    
+    currentEditingTheme = 'default';
+    currentEditingMedia = [];
+    currentEditingIsChecklist = false;
+
     // Assign new note to current folder
     if (currentFolder === 'locked') {
       currentEditingFolderId = 'locked';
@@ -639,6 +1064,9 @@ function openEditor(note = null) {
     }
     lastSavedFolderId = currentEditingFolderId;
     lastSavedIsLocked = currentEditingIsLocked;
+    lastSavedTheme = currentEditingTheme;
+    lastSavedMedia = [];
+    lastSavedIsChecklist = false;
 
     titleInput.value = '';
     bodyInput.value = '';
@@ -646,12 +1074,32 @@ function openEditor(note = null) {
     setSavingStatus('idle', 'Siap');
   }
 
+  // Set Folder title tag in header
+  if (folderTitleEl) {
+    const fMap = getFolderMap();
+    folderTitleEl.textContent = fMap[currentEditingFolderId] || 'Catatan';
+  }
+
+  // Apply theme background
+  applyEditorTheme(currentEditingTheme);
+
+  // Render media gallery
+  renderEditorMediaGallery();
+
+  // Render checklist or textarea
+  updateChecklistModeUI();
+
+  // Update More Menu labels
+  updateMoreMenuLabels();
+
   updateEditorCategoryUI(currentEditingCategory);
   updateEditorPinUI(currentEditingPinned);
 
   if (charCounter) {
     charCounter.textContent = `${bodyInput.value.length} karakter`;
   }
+
+  closeEditorPopups();
 
   overlay.classList.add('active');
   overlay.setAttribute('aria-hidden', 'false');
@@ -666,6 +1114,8 @@ async function closeEditor() {
   const bodyInput = document.getElementById('noteBodyInput');
   const deleteBtn = document.getElementById('deleteNoteBtn');
 
+  closeEditorPopups();
+
   if (!overlay) return;
   overlay.classList.remove('active');
   overlay.setAttribute('aria-hidden', 'true');
@@ -678,6 +1128,9 @@ async function closeEditor() {
   currentEditingPinned = false;
   currentEditingFolderId = 'notes';
   currentEditingIsLocked = false;
+  currentEditingTheme = 'default';
+  currentEditingMedia = [];
+  currentEditingIsChecklist = false;
 
   if (titleInput) titleInput.value = '';
   if (bodyInput) bodyInput.value = '';
@@ -695,22 +1148,16 @@ function handleEditorInput() {
 
   if (!titleInput || !bodyInput) return;
 
-  if (charCounter) {
-    charCounter.textContent = `${bodyInput.value.length} karakter`;
+  const currentTitle = titleInput.value;
+  let currentContent = '';
+  if (currentEditingIsChecklist) {
+    currentContent = serializeChecklistItems();
+  } else {
+    currentContent = bodyInput.value;
   }
 
-  const currentTitle = titleInput.value;
-  const currentContent = bodyInput.value;
-
-  if (
-    currentTitle === lastSavedTitle &&
-    currentContent === lastSavedContent &&
-    currentEditingCategory === lastSavedCategory &&
-    currentEditingPinned === lastSavedPinned &&
-    currentEditingFolderId === lastSavedFolderId &&
-    currentEditingIsLocked === lastSavedIsLocked
-  ) {
-    return;
+  if (charCounter) {
+    charCounter.textContent = `${currentContent.length} karakter`;
   }
 
   setSavingStatus('editing', 'Mengedit…');
@@ -734,17 +1181,21 @@ async function performSave() {
   if (!titleInput || !bodyInput) return;
 
   const currentTitle = titleInput.value.trim();
-  const currentContent = bodyInput.value;
+  let currentContent = '';
+  if (currentEditingIsChecklist) {
+    currentContent = serializeChecklistItems();
+  } else {
+    currentContent = bodyInput.value;
+  }
 
-  // Do not create blank notes if both title and content are empty
-  if (!currentTitle && !currentContent.trim()) {
+  // Do not create blank notes if title, content, and media are all empty
+  if (!currentTitle && !currentContent.trim() && currentEditingMedia.length === 0) {
     if (!currentEditingId) {
       setSavingStatus('idle', 'Siap');
       return;
     }
   }
 
-  // If a save is already in-flight, queue next save run
   if (isSaving) {
     saveQueued = true;
     return;
@@ -763,7 +1214,10 @@ async function performSave() {
         category: currentEditingCategory || 'Pribadi',
         isPinned: Boolean(currentEditingPinned),
         folderId: currentEditingFolderId || 'notes',
-        isLocked: Boolean(currentEditingIsLocked)
+        isLocked: Boolean(currentEditingIsLocked),
+        themeBackground: currentEditingTheme || 'default',
+        media: currentEditingMedia,
+        isChecklist: Boolean(currentEditingIsChecklist)
       };
 
       if (currentEditingId) {
@@ -786,6 +1240,9 @@ async function performSave() {
       lastSavedPinned = currentEditingPinned;
       lastSavedFolderId = currentEditingFolderId;
       lastSavedIsLocked = currentEditingIsLocked;
+      lastSavedTheme = currentEditingTheme;
+      lastSavedMedia = [...currentEditingMedia];
+      lastSavedIsChecklist = currentEditingIsChecklist;
       setSavingStatus('saved', 'Tersimpan');
       await loadAndRenderNotes();
     }
@@ -817,12 +1274,22 @@ async function flushPendingSave() {
   const bodyInput = document.getElementById('noteBodyInput');
   if (titleInput && bodyInput) {
     const curTitle = titleInput.value.trim();
-    const curContent = bodyInput.value;
+    let curContent = '';
+    if (currentEditingIsChecklist) {
+      curContent = serializeChecklistItems();
+    } else {
+      curContent = bodyInput.value;
+    }
+
     if (
       curTitle !== lastSavedTitle ||
       curContent !== lastSavedContent ||
       currentEditingCategory !== lastSavedCategory ||
-      currentEditingPinned !== lastSavedPinned
+      currentEditingPinned !== lastSavedPinned ||
+      currentEditingFolderId !== lastSavedFolderId ||
+      currentEditingIsLocked !== lastSavedIsLocked ||
+      currentEditingTheme !== lastSavedTheme ||
+      currentEditingIsChecklist !== lastSavedIsChecklist
     ) {
       await performSave();
     }
@@ -995,6 +1462,525 @@ function setupInteractions() {
       showToast(error.message || 'Gagal memindahkan ke Baru Dihapus', true);
     }
   });
+
+  // ==========================================
+  // FITUR BARU EDITOR: TEMA, TITIK TIGA, KAMERA, CORETAN, CHECKLIST
+  // ==========================================
+  function setupEditorNewFeatures() {
+    // 1. Tema Background (Gambar 1 & 2)
+    const themeBtn = document.getElementById('editorThemeBtn');
+    const themeSheet = document.getElementById('editorThemeSheet');
+    const closeThemeSheetBtn = document.getElementById('closeThemeSheetBtn');
+    const themeSwatches = document.querySelectorAll('.theme-swatch-item');
+
+    themeBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeEditorPopups();
+      themeSheet?.classList.toggle('active');
+    });
+
+    closeThemeSheetBtn?.addEventListener('click', () => {
+      themeSheet?.classList.remove('active');
+    });
+
+    themeSwatches.forEach((sw) => {
+      sw.addEventListener('click', () => {
+        const themeId = sw.getAttribute('data-theme-id');
+        if (themeId === 'scenic_random') {
+          scenicIndex = (scenicIndex + 1) % SCENIC_THEMES.length;
+          currentEditingTheme = SCENIC_THEMES[scenicIndex];
+        } else {
+          currentEditingTheme = themeId || 'default';
+        }
+        applyEditorTheme(currentEditingTheme);
+        handleEditorInput();
+      });
+    });
+
+    // 2. Titik Tiga / More Menu (Gambar 1 & 3: Sematkan, Kunci, Pindahkan Catatan)
+    const moreBtn = document.getElementById('editorMoreBtn');
+    const moreDropdown = document.getElementById('editorMoreDropdown');
+    const pinOptionBtn = document.getElementById('moreMenuPinBtn');
+    const lockOptionBtn = document.getElementById('moreMenuLockBtn');
+    const moveOptionBtn = document.getElementById('moreMenuMoveBtn');
+
+    moreBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isNowActive = moreDropdown?.classList.toggle('active');
+      moreDropdown?.setAttribute('aria-hidden', String(!isNowActive));
+      moreBtn?.setAttribute('aria-expanded', String(isNowActive));
+    });
+
+    pinOptionBtn?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeEditorPopups();
+      currentEditingPinned = !currentEditingPinned;
+      updateEditorPinUI(currentEditingPinned);
+      updateMoreMenuLabels();
+      showToast(currentEditingPinned ? 'Catatan disematkan' : 'Sematan dilepas');
+      await handleEditorInput();
+    });
+
+    lockOptionBtn?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeEditorPopups();
+      if (currentEditingIsLocked) {
+        currentEditingIsLocked = false;
+        currentEditingFolderId = 'notes';
+        updateMoreMenuLabels();
+        showToast('Kunci catatan dibuka, dipindahkan ke Catatan');
+        await handleEditorInput();
+      } else {
+        await promptPasscodeForNoteLock();
+      }
+    });
+
+    moveOptionBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeEditorPopups();
+      openMoveNoteModal();
+    });
+
+    // 3. Ambil Gambar / Pilih Gambar (Gambar 1 & 4: Ambil Foto, Pilih Foto/Video)
+    const cameraBtn = document.getElementById('editorCameraBtn');
+    const cameraMenu = document.getElementById('editorCameraMenu');
+    const takePhotoBtn = document.getElementById('cameraTakePhotoBtn');
+    const pickPhotoBtn = document.getElementById('cameraPickPhotoBtn');
+    const captureInput = document.getElementById('cameraCaptureInput');
+    const fileInput = document.getElementById('cameraFileInput');
+
+    cameraBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isActive = cameraMenu?.classList.toggle('active');
+      cameraMenu?.setAttribute('aria-hidden', String(!isActive));
+    });
+
+    takePhotoBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cameraMenu?.classList.remove('active');
+      captureInput?.click();
+    });
+
+    pickPhotoBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      cameraMenu?.classList.remove('active');
+      fileInput?.click();
+    });
+
+    async function handleMediaUpload(files) {
+      if (!files || files.length === 0) return;
+      for (const file of Array.from(files)) {
+        try {
+          if (file.type.startsWith('video/')) {
+            const dataUrl = await readFileAsDataUrl(file);
+            currentEditingMedia.push({
+              id: Date.now() + Math.random(),
+              type: 'video',
+              url: dataUrl,
+              name: file.name
+            });
+          } else {
+            const dataUrl = await readAndCompressImage(file);
+            currentEditingMedia.push({
+              id: Date.now() + Math.random(),
+              type: 'image',
+              url: dataUrl,
+              name: file.name
+            });
+          }
+        } catch (err) {
+          console.error('Gagal membaca media:', err);
+          showToast('Gagal memuat berkas media', true);
+        }
+      }
+      renderEditorMediaGallery();
+      handleEditorInput();
+      showToast('Media berhasil ditambahkan');
+    }
+
+    captureInput?.addEventListener('change', async (e) => {
+      await handleMediaUpload(e.target.files);
+      captureInput.value = '';
+    });
+
+    fileInput?.addEventListener('change', async (e) => {
+      await handleMediaUpload(e.target.files);
+      fileInput.value = '';
+    });
+
+    // 4. Fitur Checklist (Gambar 1)
+    const checklistToggleBtn = document.getElementById('editorChecklistBtn');
+    checklistToggleBtn?.addEventListener('click', () => {
+      const bodyInput = document.getElementById('noteBodyInput');
+      const checklistContainer = document.getElementById('editorChecklistContainer');
+
+      if (!currentEditingIsChecklist) {
+        currentEditingIsChecklist = true;
+        renderChecklistFromText(bodyInput?.value || '');
+        updateChecklistModeUI();
+        handleEditorInput();
+      } else {
+        // Jika sudah di dalam mode checklist, periksa apakah ada row yang sedang difokuskan
+        const activeInput = document.activeElement;
+        const activeRow = activeInput?.closest?.('.checklist-row');
+        if (activeRow) {
+          // Toggle row yang aktif antara checklist dan teks biasa
+          const cb = activeRow.querySelector('.checklist-checkbox');
+          if (activeRow.classList.contains('is-text-only')) {
+            activeRow.classList.remove('is-text-only');
+            if (cb) cb.style.display = 'flex';
+            if (activeInput) activeInput.placeholder = 'Ketik butir catatan...';
+          } else {
+            activeRow.classList.add('is-text-only');
+            if (cb) {
+              cb.style.display = 'none';
+              cb.classList.remove('checked');
+            }
+            activeRow.classList.remove('is-completed');
+            if (activeInput) activeInput.placeholder = 'Ketik catatan...';
+          }
+          handleEditorInput();
+        } else {
+          // Tambahkan row checklist baru di akhir
+          const newRow = createChecklistRow(checklistContainer, '', false, null, false);
+          newRow.querySelector('.checklist-text-input')?.focus();
+          handleEditorInput();
+        }
+      }
+    });
+
+    // 5. Pindahkan Catatan Modal
+    const moveOverlay = document.getElementById('moveNoteOverlay');
+    const closeMoveBtn = document.getElementById('closeMoveNoteBtn');
+    closeMoveBtn?.addEventListener('click', () => {
+      moveOverlay?.classList.remove('active');
+    });
+    moveOverlay?.addEventListener('click', (e) => {
+      if (e.target === moveOverlay) {
+        moveOverlay.classList.remove('active');
+      }
+    });
+
+    // 6. Lightbox Zoom / Pinch (Pinch-to-zoom di HP + Tombol Zoom)
+    const lightboxOverlay = document.getElementById('imageLightboxOverlay');
+    const closeLightboxBtn = document.getElementById('closeLightboxBtn');
+    const zoomInBtn = document.getElementById('lightboxZoomInBtn');
+    const zoomOutBtn = document.getElementById('lightboxZoomOutBtn');
+    const resetZoomBtn = document.getElementById('lightboxResetBtn');
+    const lightboxViewport = document.getElementById('lightboxViewport');
+
+    function applyLightboxZoom() {
+      const img = document.getElementById('lightboxImage');
+      const text = document.getElementById('lightboxZoomLevel');
+      if (img) img.style.transform = `scale(${currentLightboxScale})`;
+      if (text) text.textContent = `${Math.round(currentLightboxScale * 100)}%`;
+    }
+
+    zoomInBtn?.addEventListener('click', () => {
+      currentLightboxScale = Math.min(5, currentLightboxScale + 0.25);
+      applyLightboxZoom();
+    });
+
+    zoomOutBtn?.addEventListener('click', () => {
+      currentLightboxScale = Math.max(0.5, currentLightboxScale - 0.25);
+      applyLightboxZoom();
+    });
+
+    resetZoomBtn?.addEventListener('click', () => {
+      currentLightboxScale = 1;
+      applyLightboxZoom();
+    });
+
+    closeLightboxBtn?.addEventListener('click', closeImageLightbox);
+
+    lightboxOverlay?.addEventListener('click', (e) => {
+      if (e.target === lightboxOverlay || e.target === lightboxViewport) {
+        closeImageLightbox();
+      }
+    });
+
+    // Touch pinch gesture handler
+    let touchDistStart = 0;
+    let initialTouchScale = 1;
+    lightboxViewport?.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        touchDistStart = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialTouchScale = currentLightboxScale;
+      }
+    }, { passive: true });
+
+    lightboxViewport?.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && touchDistStart > 0) {
+        const curDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const scaleRatio = curDist / touchDistStart;
+        currentLightboxScale = Math.min(5, Math.max(0.5, initialTouchScale * scaleRatio));
+        applyLightboxZoom();
+      }
+    }, { passive: true });
+
+    // 7. Alat Coret / Canvas Drawing (Gambar 1 & 5)
+    setupDrawingModalEvents();
+
+    // Close open popups when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#editorMoreContainer')) {
+        document.getElementById('editorMoreDropdown')?.classList.remove('active');
+        document.getElementById('editorMoreBtn')?.setAttribute('aria-expanded', 'false');
+      }
+      if (!e.target.closest('#cameraMenuContainer')) {
+        document.getElementById('editorCameraMenu')?.classList.remove('active');
+      }
+      if (!e.target.closest('#editorThemeSheet') && !e.target.closest('#editorThemeBtn')) {
+        document.getElementById('editorThemeSheet')?.classList.remove('active');
+      }
+    });
+  }
+
+  function setupDrawingModalEvents() {
+    const drawingOverlay = document.getElementById('drawingModalOverlay');
+    const drawingOpenBtn = document.getElementById('editorDrawingBtn');
+    const backBtn = document.getElementById('drawingBackBtn');
+    const undoBtn = document.getElementById('drawingUndoBtn');
+    const redoBtn = document.getElementById('drawingRedoBtn');
+    const clearBtn = document.getElementById('drawingClearBtn');
+    const saveBtn = document.getElementById('drawingSaveBtn');
+    const colorPickerBtn = document.getElementById('drawingColorPickerBtn');
+    const colorPalette = document.getElementById('drawingColorPalette');
+    const activeColorCircle = document.getElementById('drawingActiveColorCircle');
+    const canvas = document.getElementById('drawingCanvas');
+    const wrapper = document.getElementById('drawingCanvasWrapper');
+
+    if (!canvas || !wrapper) return;
+
+    const ctx = canvas.getContext('2d');
+    let isDrawing = false;
+    let currentTool = 'pencil';
+    let currentColor = '#000000';
+    let undoStack = [];
+    let redoStack = [];
+    let lastX = 0;
+    let lastY = 0;
+
+    function resizeCanvas() {
+      const rect = wrapper.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(300, rect.width || window.innerWidth);
+      const h = Math.max(300, rect.height || (window.innerHeight - 130));
+
+      let prevData = null;
+      if (canvas.width > 0 && canvas.height > 0) {
+        try {
+          prevData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        } catch (_) {}
+      }
+
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+
+      ctx.scale(dpr, dpr);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (prevData) {
+        try {
+          ctx.putImageData(prevData, 0, 0);
+        } catch (_) {}
+      } else {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+      }
+    }
+
+    function pushUndo() {
+      try {
+        undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+        if (undoStack.length > 25) undoStack.shift();
+        redoStack = [];
+      } catch (_) {}
+    }
+
+    drawingOpenBtn?.addEventListener('click', () => {
+      drawingOverlay?.classList.add('active');
+      setTimeout(() => {
+        resizeCanvas();
+        undoStack = [];
+        redoStack = [];
+      }, 50);
+    });
+
+    backBtn?.addEventListener('click', () => {
+      drawingOverlay?.classList.remove('active');
+    });
+
+    undoBtn?.addEventListener('click', () => {
+      if (undoStack.length > 0) {
+        try {
+          redoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+          const prev = undoStack.pop();
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.putImageData(prev, 0, 0);
+          ctx.restore();
+        } catch (_) {}
+      }
+    });
+
+    redoBtn?.addEventListener('click', () => {
+      if (redoStack.length > 0) {
+        try {
+          undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+          const next = redoStack.pop();
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.putImageData(next, 0, 0);
+          ctx.restore();
+        } catch (_) {}
+      }
+    });
+
+    clearBtn?.addEventListener('click', () => {
+      pushUndo();
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+    });
+
+    saveBtn?.addEventListener('click', () => {
+      const dataUrl = canvas.toDataURL('image/png');
+      currentEditingMedia.push({
+        id: Date.now() + Math.random(),
+        type: 'image',
+        url: dataUrl,
+        name: `Coretan_${new Date().toLocaleTimeString('id-ID').replace(/:/g, '-')}`
+      });
+      renderEditorMediaGallery();
+      handleEditorInput();
+      drawingOverlay?.classList.remove('active');
+      showToast('Coretan berhasil ditambahkan ke catatan');
+    });
+
+    colorPickerBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (colorPalette) {
+        colorPalette.style.display = colorPalette.style.display === 'none' ? 'flex' : 'none';
+      }
+    });
+
+    document.querySelectorAll('.drawing-palette-color').forEach((sw) => {
+      sw.addEventListener('click', (e) => {
+        e.stopPropagation();
+        document.querySelectorAll('.drawing-palette-color').forEach((s) => s.classList.remove('active'));
+        sw.classList.add('active');
+        currentColor = sw.getAttribute('data-color') || '#000000';
+        if (activeColorCircle) {
+          activeColorCircle.style.background = currentColor;
+        }
+        if (colorPalette) colorPalette.style.display = 'none';
+        if (currentTool === 'eraser') {
+          setTool('pencil');
+        }
+      });
+    });
+
+    const toolBtns = [
+      { el: document.getElementById('toolPencil'), name: 'pencil' },
+      { el: document.getElementById('toolPen'), name: 'pen' },
+      { el: document.getElementById('toolHighlighter'), name: 'highlighter' },
+      { el: document.getElementById('toolEraser'), name: 'eraser' }
+    ];
+
+    function setTool(name) {
+      currentTool = name;
+      toolBtns.forEach(({ el, name: tName }) => {
+        el?.classList.toggle('active', tName === name);
+      });
+    }
+
+    toolBtns.forEach(({ el, name }) => {
+      el?.addEventListener('click', () => setTool(name));
+    });
+
+    function getCanvasPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    function applyToolStyle() {
+      if (currentTool === 'eraser') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 26;
+        ctx.globalAlpha = 1.0;
+      } else if (currentTool === 'highlighter') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = 20;
+        ctx.globalAlpha = 0.35;
+      } else if (currentTool === 'pen') {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = 5.5;
+        ctx.globalAlpha = 1.0;
+      } else {
+        // pencil
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.strokeStyle = currentColor;
+        ctx.lineWidth = 2.5;
+        ctx.globalAlpha = 1.0;
+      }
+    }
+
+    canvas.addEventListener('pointerdown', (e) => {
+      canvas.setPointerCapture(e.pointerId);
+      isDrawing = true;
+      pushUndo();
+      const pos = getCanvasPos(e);
+      lastX = pos.x;
+      lastY = pos.y;
+      applyToolStyle();
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(lastX + 0.1, lastY + 0.1);
+      ctx.stroke();
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (!isDrawing) return;
+      const pos = getCanvasPos(e);
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+      lastX = pos.x;
+      lastY = pos.y;
+    });
+
+    const stopDrawing = (e) => {
+      if (!isDrawing) return;
+      isDrawing = false;
+      try {
+        canvas.releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    };
+
+    canvas.addEventListener('pointerup', stopDrawing);
+    canvas.addEventListener('pointercancel', stopDrawing);
+  }
+
+  setupEditorNewFeatures();
 
   // View Mode Switcher (Tampilan Daftar, Tampilan Kartu, Tampilan Kisi)
   const viewModeBtn = document.getElementById('viewModeBtn');
@@ -1521,6 +2507,7 @@ async function promptLockedFolderAccess() {
   const subtextEl = document.getElementById('passcodeSubtext');
 
   enteredPin = '';
+  pendingPasscodeAction = null;
   updatePinDotsUI();
 
   if (!savedPin) {
@@ -1534,6 +2521,40 @@ async function promptLockedFolderAccess() {
     passcodeSetupStep = 'unlock';
     if (titleEl) titleEl.textContent = 'Buka Folder Terkunci';
     if (subtextEl) subtextEl.textContent = 'Masukkan 4 angka PIN Anda untuk membuka folder.';
+  }
+
+  passcodeOverlay?.classList.add('active');
+}
+
+/**
+ * Prompt passcode specifically before locking a note into the locked folder
+ */
+async function promptPasscodeForNoteLock() {
+  const savedPin = await getSetting('locked_folder_pin');
+  const passcodeOverlay = document.getElementById('passcodeOverlay');
+  const titleEl = document.getElementById('passcodeTitle');
+  const subtextEl = document.getElementById('passcodeSubtext');
+
+  enteredPin = '';
+  updatePinDotsUI();
+
+  pendingPasscodeAction = async () => {
+    currentEditingIsLocked = true;
+    currentEditingFolderId = 'locked';
+    updateMoreMenuLabels();
+    await performSave();
+    showToast('Catatan berhasil dikunci ke folder Terkunci');
+  };
+
+  if (!savedPin) {
+    passcodeSetupStep = 'create';
+    tempPasscode = '';
+    if (titleEl) titleEl.textContent = 'Buat Kata Sandi Baru';
+    if (subtextEl) subtextEl.textContent = 'Tentukan 4 angka PIN untuk mengunci catatan ke folder Terkunci.';
+  } else {
+    passcodeSetupStep = 'unlock';
+    if (titleEl) titleEl.textContent = 'Kunci Catatan';
+    if (subtextEl) subtextEl.textContent = 'Masukkan 4 angka PIN Anda untuk memasukkan catatan ke folder Terkunci.';
   }
 
   passcodeOverlay?.classList.add('active');
@@ -1564,6 +2585,7 @@ function setupPasscodeModalEvents() {
     enteredPin = '';
     tempPasscode = '';
     passcodeSetupStep = null;
+    pendingPasscodeAction = null;
     updatePinDotsUI();
   }
 
@@ -1611,9 +2633,15 @@ async function handlePasscodeSubmission(closeModal, titleEl, subtextEl) {
       await setSetting('locked_folder_pin', enteredPin);
       showToast('Kata sandi folder berhasil dibuat!');
       isPasscodeUnlocked = true;
-      currentFolder = 'locked';
       closeModal();
-      await loadAndRenderNotes();
+      if (pendingPasscodeAction) {
+        const action = pendingPasscodeAction;
+        pendingPasscodeAction = null;
+        await action();
+      } else {
+        currentFolder = 'locked';
+        await loadAndRenderNotes();
+      }
     } else {
       updatePinDotsUI(true);
       showToast('Kata sandi tidak cocok. Silakan coba lagi.', true);
@@ -1630,10 +2658,16 @@ async function handlePasscodeSubmission(closeModal, titleEl, subtextEl) {
     // Step 3: Unlocking folder
     if (enteredPin === savedPin) {
       isPasscodeUnlocked = true;
-      currentFolder = 'locked';
       closeModal();
-      showToast('Folder Terkunci dibuka');
-      await loadAndRenderNotes();
+      if (pendingPasscodeAction) {
+        const action = pendingPasscodeAction;
+        pendingPasscodeAction = null;
+        await action();
+      } else {
+        currentFolder = 'locked';
+        showToast('Folder Terkunci dibuka');
+        await loadAndRenderNotes();
+      }
     } else {
       updatePinDotsUI(true);
       showToast('Kata sandi salah!', true);
@@ -1683,6 +2717,9 @@ async function initApp() {
     </main>
     ${renderFabAddButton()}
     ${renderEditorModal()}
+    ${renderDrawingModal()}
+    ${renderMoveNoteModal()}
+    ${renderImageLightboxModal()}
     ${renderConfirmDialog()}
     ${renderBackupDialog()}
     <div id="folderPageRoot">

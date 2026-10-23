@@ -873,7 +873,8 @@
   max-width: 680px;
   height: 90vh;
   height: 90dvh;
-  background-color: var(--bg-surface);
+  background-color: #ffffff;
+  color: #0f172a;
   border-top-left-radius: var(--radius-lg);
   border-top-right-radius: var(--radius-lg);
   display: flex;
@@ -881,6 +882,8 @@
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.15);
   transform: translateY(100%);
   transition: transform var(--transition-normal);
+  overflow: hidden;
+  position: relative;
 }
 
 .editor-overlay.active .editor-panel {
@@ -892,7 +895,12 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  flex-shrink: 0;
+  z-index: 10;
 }
 
 .editor-actions {
@@ -1882,4 +1890,1068 @@
   opacity: 0.85;
 }
 
+/* ========================================================
+   RICH EDITOR ENHANCEMENTS (Header, More Menu, Toolbar, Themes)
+======================================================== */
+.editor-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 
+.editor-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  width: auto;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 1.05rem;
+  transition: all var(--transition-fast);
+}
+
+.editor-back-btn:hover {
+  background-color: var(--bg-muted);
+}
+
+.editor-folder-title-tag {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Three Dots More Menu (Gambar 3) */
+.editor-more-container {
+  position: relative;
+}
+
+.editor-more-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background-color: var(--bg-surface-elevated, #ffffff);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  min-width: 200px;
+  padding: 6px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px) scale(0.96);
+  transition: all var(--transition-fast);
+}
+
+.editor-more-dropdown.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.editor-more-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.92rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.editor-more-item:hover {
+  background-color: var(--bg-muted);
+}
+
+.editor-more-item svg {
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* Editor Bottom Toolbar (Gambar 1, 4) */
+.editor-bottom-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 10px 20px;
+  background-color: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  position: relative;
+  flex-shrink: 0;
+  margin-top: auto;
+  z-index: 10;
+}
+
+.editor-tool-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.editor-tool-btn:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+.editor-tool-btn.active {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+/* Camera Menu Popup (Gambar 4) */
+.camera-menu-container {
+  position: relative;
+}
+
+.editor-camera-popup {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%) translateY(8px) scale(0.96);
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  min-width: 180px;
+  padding: 6px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: all var(--transition-fast);
+}
+
+.editor-camera-popup.active {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.camera-popup-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #0f172a;
+  font-size: 0.92rem;
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.camera-popup-item:hover {
+  background-color: #f1f5f9;
+}
+
+.camera-popup-item svg {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* Theme Selection Bottom Sheet (Gambar 2) */
+.editor-theme-sheet {
+  background-color: #ffffff;
+  border-top: 1px solid #e2e8f0;
+  padding: 14px 20px;
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+  animation: slide-up-fade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.editor-theme-sheet.active {
+  display: flex;
+}
+
+@keyframes slide-up-fade {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.theme-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-sheet-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.theme-sheet-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.theme-sheet-close:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-muted);
+}
+
+.theme-swatches-scroll {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+  padding: 6px 2px 10px 2px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.theme-swatches-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.theme-swatches-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border-color);
+  border-radius: 4px;
+}
+
+.theme-swatch-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.theme-swatch-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-md);
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: all var(--transition-fast);
+}
+
+.theme-swatch-item.active .theme-swatch-circle {
+  border-color: var(--accent-primary);
+  transform: scale(1.08);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.theme-swatch-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.theme-swatch-item.active .theme-swatch-label {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
+/* Swatch Preview Styling */
+.swatch-default {
+  background-color: var(--bg-muted);
+  color: var(--text-muted);
+}
+
+.swatch-scenic {
+  background: linear-gradient(135deg, #1e3a8a, #0284c7, #fbbf24);
+}
+
+.swatch-warm-gradient {
+  background: linear-gradient(135deg, #ef4444, #f97316, #eab308);
+}
+
+.swatch-paper-cream {
+  background-color: #f7f3e8;
+  border: 1px solid #e5dec9;
+}
+
+.swatch-paper-grid {
+  background-color: #f8fafc;
+  background-image: 
+    linear-gradient(#e2e8f0 1px, transparent 1px),
+    linear-gradient(90deg, #e2e8f0 1px, transparent 1px);
+  background-size: 8px 8px;
+}
+
+.swatch-paper-dots {
+  background-color: #fafaf9;
+  background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px);
+  background-size: 8px 8px;
+}
+
+.swatch-paper-lined {
+  background-color: #fffef7;
+  background-image: linear-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 100% 10px;
+}
+
+.swatch-color-sage {
+  background-color: #e2ece3;
+}
+
+.swatch-color-sky {
+  background-color: #e0f2fe;
+}
+
+.swatch-color-lavender {
+  background-color: #f3e8ff;
+}
+
+.swatch-color-peach {
+  background-color: #ffedd5;
+}
+
+.swatch-color-dark {
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+}
+
+/* ========================================================
+   DYNAMIC NOTE THEMES (Applied to .editor-panel)
+======================================================== */
+.editor-panel[data-note-theme="warm_gradient"] {
+  background: linear-gradient(160deg, #fff5eb 0%, #fee2e2 50%, #fef3c7 100%);
+  color: #1e293b;
+}
+
+.editor-panel[data-note-theme="paper_cream"] {
+  background-color: #f7f3e8;
+  color: #382d1f;
+}
+
+.editor-panel[data-note-theme="paper_grid"] {
+  background-color: #ffffff;
+  background-image: 
+    linear-gradient(#f1f5f9 1.5px, transparent 1.5px),
+    linear-gradient(90deg, #f1f5f9 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+.editor-panel[data-note-theme="paper_dots"] {
+  background-color: #ffffff;
+  background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+  background-size: 24px 24px;
+}
+
+.editor-panel[data-note-theme="paper_lined"] {
+  background-color: #fffef9;
+  background-image: linear-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 100% 32px;
+}
+
+.editor-panel[data-note-theme="color_sage"] {
+  background-color: #edf5ee;
+  color: #164e28;
+}
+
+.editor-panel[data-note-theme="color_sky"] {
+  background-color: #ebf6ff;
+  color: #0c4a6e;
+}
+
+.editor-panel[data-note-theme="color_lavender"] {
+  background-color: #f5edff;
+  color: #4a1d96;
+}
+
+.editor-panel[data-note-theme="color_peach"] {
+  background-color: #fff2e8;
+  color: #7c2d12;
+}
+
+.editor-panel[data-note-theme="color_dark"] {
+  background: linear-gradient(180deg, #182234 0%, #0f172a 100%);
+  color: #f8fafc;
+}
+
+.editor-panel[data-note-theme="color_dark"] .editor-title-input,
+.editor-panel[data-note-theme="color_dark"] .editor-body-textarea,
+.editor-panel[data-note-theme="color_dark"] .checklist-text-input {
+  color: #f8fafc;
+}
+
+/* Scenic Landscapes (Kota, Pegunungan, Pemandangan Alam, Sunset) */
+.editor-panel[data-note-theme="scenic_mountains"] {
+  background: 
+    linear-gradient(to bottom, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.7) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 600'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fdba74'/%3E%3Cstop offset='100%25' stop-color='%23f472b6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1000' height='600' fill='url(%23sky)'/%3E%3Cpolygon points='100,600 350,220 600,600' fill='%236366f1' opacity='0.7'/%3E%3Cpolygon points='400,600 650,180 900,600' fill='%234338ca' opacity='0.8'/%3E%3Cpolygon points='-50,600 200,320 450,600' fill='%23818cf8' opacity='0.5'/%3E%3C/svg%3E") no-repeat center bottom / cover;
+}
+
+.editor-panel[data-note-theme="scenic_city"] {
+  background: 
+    linear-gradient(to bottom, rgba(255,255,255,0.88) 0%, rgba(255,255,255,0.75) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 600'%3E%3Cdefs%3E%3ClinearGradient id='twilight' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%230284c7'/%3E%3Cstop offset='100%25' stop-color='%2338bdf8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1000' height='600' fill='url(%23twilight)'/%3E%3Crect x='50' y='220' width='90' height='380' fill='%231e293b' opacity='0.7'/%3E%3Crect x='160' y='140' width='110' height='460' fill='%230f172a' opacity='0.85'/%3E%3Crect x='290' y='260' width='80' height='340' fill='%23334155' opacity='0.6'/%3E%3Crect x='390' y='180' width='130' height='420' fill='%231e293b' opacity='0.8'/%3E%3Crect x='540' y='120' width='90' height='480' fill='%230f172a' opacity='0.9'/%3E%3Crect x='650' y='240' width='100' height='360' fill='%23334155' opacity='0.65'/%3E%3Crect x='770' y='170' width='120' height='430' fill='%231e293b' opacity='0.8'/%3E%3C/svg%3E") no-repeat center bottom / cover;
+}
+
+.editor-panel[data-note-theme="scenic_nature"] {
+  background: 
+    linear-gradient(to bottom, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.7) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 600'%3E%3Cdefs%3E%3ClinearGradient id='natureSky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0%25' stop-color='%236ee7b7'/%3E%3Cstop offset='100%25' stop-color='%233b82f6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1000' height='600' fill='url(%23natureSky)'/%3E%3Cpath d='M0,450 Q250,320 500,420 T1000,380 L1000,600 L0,600 Z' fill='%23059669' opacity='0.7'/%3E%3Cpath d='M0,500 Q300,400 600,480 T1000,440 L1000,600 L0,600 Z' fill='%23047857' opacity='0.85'/%3E%3C/svg%3E") no-repeat center bottom / cover;
+}
+
+/* ========================================================
+   MEDIA GALLERY (Images, Videos, Drawings)
+======================================================== */
+.editor-media-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 8px 0;
+}
+
+.editor-media-item {
+  position: relative;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-muted);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-media-img {
+  width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+  background-color: rgba(0, 0, 0, 0.03);
+  cursor: zoom-in;
+  display: block;
+}
+
+.editor-media-video {
+  width: 100%;
+  max-height: 420px;
+  background-color: #000000;
+  display: block;
+  outline: none;
+}
+
+.btn-remove-media {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: rgba(15, 23, 42, 0.7);
+  color: #ffffff;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: all var(--transition-fast);
+  z-index: 5;
+}
+
+.btn-remove-media:hover {
+  background-color: var(--danger);
+  transform: scale(1.08);
+}
+
+.media-pinch-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  text-align: right;
+  background-color: var(--bg-surface);
+}
+
+/* ========================================================
+   CHECKLIST EDITOR (Gambar 1)
+======================================================== */
+.editor-checklist-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.checklist-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.checklist-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid var(--border-color);
+  background-color: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: transparent;
+  transition: all var(--transition-fast);
+}
+
+.checklist-checkbox:hover {
+  border-color: var(--accent-primary);
+}
+
+.checklist-checkbox.checked {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: #ffffff;
+}
+
+.checklist-text-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  padding: 4px 0;
+}
+
+.checklist-row.is-completed .checklist-text-input {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.checklist-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  padding: 4px;
+}
+
+.checklist-row:hover .checklist-delete-btn {
+  opacity: 1;
+}
+
+/* ========================================================
+   DRAWING CANVAS MODAL (Gambar 5)
+======================================================== */
+.drawing-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: var(--bg-surface);
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+}
+
+.drawing-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawing-modal-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.drawing-header {
+  padding: 12px 20px;
+  background-color: var(--bg-surface);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.drawing-header-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.drawing-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-save-drawing {
+  background-color: var(--accent-primary);
+  color: #ffffff;
+  border-radius: var(--radius-sm);
+}
+
+.btn-save-drawing:hover {
+  background-color: var(--accent-primary-hover);
+  color: #ffffff;
+}
+
+.drawing-canvas-wrapper {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background-color: #ffffff;
+  touch-action: none;
+}
+
+#drawingCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.drawing-color-palette {
+  background-color: var(--bg-surface-elevated, #ffffff);
+  border-top: 1px solid var(--border-color);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.drawing-palette-color {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.drawing-palette-color:hover {
+  transform: scale(1.15);
+}
+
+.drawing-palette-color.active {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.4);
+}
+
+.drawing-bottom-bar {
+  padding: 12px 20px;
+  background-color: var(--bg-surface);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+}
+
+.drawing-tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.drawing-tool-btn.active {
+  color: var(--accent-primary);
+  background-color: var(--accent-light);
+}
+
+.drawing-tool-btn .tool-label {
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.drawing-color-circle {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  display: inline-block;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* ========================================================
+   MOVE NOTE TO FOLDER MODAL
+======================================================== */
+.move-folder-modal-box {
+  max-width: 420px;
+}
+
+.move-folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 280px;
+  overflow-y: auto;
+  margin: 14px 0 6px 0;
+}
+
+.move-folder-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-surface);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-align: left;
+}
+
+.move-folder-item:hover {
+  background-color: var(--bg-muted);
+  border-color: var(--accent-primary);
+}
+
+.move-folder-item.current-folder {
+  border-color: var(--accent-primary);
+  background-color: var(--accent-light);
+  color: var(--accent-primary);
+}
+
+.move-folder-icon {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+}
+
+.move-folder-name {
+  flex: 1;
+}
+
+.move-folder-count {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* ========================================================
+   IMAGE LIGHTBOX / PINCH-TO-ZOOM VIEWER
+======================================================== */
+.image-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.92);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-normal);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.image-lightbox-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.lightbox-header {
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #ffffff;
+  z-index: 10;
+}
+
+.lightbox-title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.lightbox-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lightbox-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #ffffff;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.lightbox-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.lightbox-zoom-text {
+  font-size: 0.85rem;
+  min-width: 44px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.lightbox-viewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  touch-action: none;
+}
+
+#lightboxImage {
+  max-width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  transition: transform 0.1s ease-out;
+  transform-origin: center center;
+  user-select: none;
+}
+
+.lightbox-hint {
+  padding: 12px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.78rem;
+}
+
+/* ========================================================
+   SCOPED LIGHT THEME FOR EDITOR PANEL
+   Mode Gelap / Terang hanya berlaku di luar dari isi catatan
+   Di dalam isi catatan UI selalu terang agar background tidak nabrak
+======================================================== */
+.editor-panel {
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-muted: #f1f5f9;
+  --border-color: #e2e8f0;
+  --border-focus: #3b82f6;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* When dark mode is active on app, ensure editor panel remains bright and legible */
+[data-theme="dark"] .editor-panel {
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --bg-surface: #ffffff;
+  --bg-surface-elevated: #ffffff;
+  --bg-muted: #f1f5f9;
+  --border-color: #e2e8f0;
+  --border-focus: #3b82f6;
+  background-color: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .editor-panel .editor-header {
+  background-color: rgba(255, 255, 255, 0.96);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .editor-panel .editor-folder-title-tag,
+[data-theme="dark"] .editor-panel .editor-back-btn {
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .btn-icon {
+  color: #475569;
+}
+
+[data-theme="dark"] .editor-panel .btn-icon:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .category-pill-btn {
+  background-color: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+[data-theme="dark"] .editor-panel .category-pill-btn:hover {
+  border-color: #3b82f6;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .category-pill-btn.active {
+  background-color: #eff6ff;
+  border-color: #2563eb;
+  color: #2563eb;
+}
+
+[data-theme="dark"] .editor-panel .editor-title-input {
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .editor-title-input::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .editor-panel .editor-body-textarea {
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .editor-body-textarea::placeholder {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .editor-panel .checklist-text-input {
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .checklist-checkbox {
+  background-color: #ffffff;
+  border-color: #cbd5e1;
+}
+
+[data-theme="dark"] .editor-panel .checklist-checkbox.checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+[data-theme="dark"] .editor-panel .editor-footer {
+  border-top-color: rgba(0, 0, 0, 0.08);
+  color: #64748b;
+}
+
+[data-theme="dark"] .editor-panel .editor-bottom-toolbar {
+  background-color: #ffffff;
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .editor-panel .editor-tool-btn {
+  color: #64748b;
+}
+
+[data-theme="dark"] .editor-panel .editor-tool-btn:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .editor-tool-btn.active {
+  background-color: #eff6ff;
+  color: #2563eb;
+}
+
+[data-theme="dark"] .editor-panel .editor-camera-popup,
+[data-theme="dark"] .editor-panel .editor-more-dropdown {
+  background-color: #ffffff;
+  border-color: #e2e8f0;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="dark"] .editor-panel .camera-popup-item,
+[data-theme="dark"] .editor-panel .editor-more-item {
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .camera-popup-item:hover,
+[data-theme="dark"] .editor-panel .editor-more-item:hover {
+  background-color: #f1f5f9;
+}
+
+[data-theme="dark"] .editor-panel .editor-theme-sheet {
+  background-color: #ffffff;
+  border-top-color: #e2e8f0;
+}
+
+[data-theme="dark"] .editor-panel .theme-sheet-title {
+  color: #475569;
+}
+
+[data-theme="dark"] .editor-panel .theme-sheet-close {
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .editor-panel .theme-sheet-close:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+
+[data-theme="dark"] .editor-panel .theme-swatch-label {
+  color: #64748b;
+}
+
+[data-theme="dark"] .editor-panel .theme-swatch-item.active .theme-swatch-label {
+  color: #2563eb;
+}
+
+/* Explicit note theme overrides if the user explicitly chose dark note theme */
+.editor-panel[data-note-theme="color_dark"] {
+  background: linear-gradient(180deg, #182234 0%, #0f172a 100%) !important;
+  color: #f8fafc !important;
+}
+
+.editor-panel[data-note-theme="color_dark"] .editor-title-input,
+.editor-panel[data-note-theme="color_dark"] .editor-body-textarea,
+.editor-panel[data-note-theme="color_dark"] .checklist-text-input {
+  color: #f8fafc !important;
+}
+
+/* Bottom toolbar pinned firmly at the bottom */
+.editor-bottom-toolbar {
+  flex-shrink: 0;
+  background-color: #ffffff;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  position: relative;
+  z-index: 20;
+  margin-top: auto;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
+}

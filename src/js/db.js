@@ -39,9 +39,10 @@ function validateNotePayload(noteData, isUpdate = false) {
 
   const title = typeof noteData.title === 'string' ? noteData.title.trim() : '';
   const content = typeof noteData.content === 'string' ? noteData.content : '';
+  const media = Array.isArray(noteData.media) ? noteData.media : [];
 
-  if (!title && !content.trim()) {
-    throw new Error('Judul atau isi catatan tidak boleh kosong');
+  if (!title && !content.trim() && media.length === 0) {
+    throw new Error('Judul, isi catatan, atau lampiran gambar tidak boleh kosong');
   }
 
   return {
@@ -51,7 +52,10 @@ function validateNotePayload(noteData, isUpdate = false) {
     isPinned: Boolean(noteData.isPinned),
     folderId: noteData.folderId !== undefined ? noteData.folderId : 'notes',
     deletedAt: noteData.deletedAt !== undefined ? noteData.deletedAt : null,
-    isLocked: Boolean(noteData.isLocked)
+    isLocked: Boolean(noteData.isLocked),
+    themeBackground: noteData.themeBackground !== undefined ? noteData.themeBackground : null,
+    media,
+    isChecklist: Boolean(noteData.isChecklist)
   };
 }
 
@@ -164,6 +168,9 @@ export async function updateNote(id, updateData) {
         folderId: validated.folderId !== undefined ? validated.folderId : (existing.folderId || 'notes'),
         isLocked: validated.isLocked !== undefined ? validated.isLocked : Boolean(existing.isLocked),
         deletedAt: validated.deletedAt !== undefined ? validated.deletedAt : (existing.deletedAt || null),
+        themeBackground: validated.themeBackground !== undefined ? validated.themeBackground : (existing.themeBackground || null),
+        media: validated.media !== undefined ? validated.media : (existing.media || []),
+        isChecklist: validated.isChecklist !== undefined ? validated.isChecklist : Boolean(existing.isChecklist),
         updatedAt: now
       });
 

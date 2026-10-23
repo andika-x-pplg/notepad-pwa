@@ -126,6 +126,15 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card', extraOptions 
     ? `<span class="note-folder-tag"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> ${escapeHtml(folderName)}</span>`
     : '';
 
+  const mediaCount = Array.isArray(note.media) ? note.media.length : 0;
+  const mediaBadgeHtml = mediaCount > 0
+    ? `<span class="note-folder-tag" title="${mediaCount} Lampiran Media"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg> ${mediaCount}</span>`
+    : '';
+
+  const themeAttr = note.themeBackground && note.themeBackground !== 'default'
+    ? `data-note-theme="${escapeHtml(note.themeBackground)}"`
+    : '';
+
   // Jika di halaman "Baru Dihapus" (Trash), tombol aksi adalah Pulihkan & Hapus Permanen
   const actionButtonHtml = isTrashView
     ? `
@@ -162,11 +171,12 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card', extraOptions 
   if (viewMode === 'list') {
     const rawSnippet = (note.content || '').replace(/\r?\n/g, ' ').trim();
     return `
-      <article class="note-list-item ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+      <article class="note-list-item ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}" ${themeAttr}>
         <div class="list-item-main">
           <div class="list-item-title-row">
             <h3 class="list-item-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
             ${folderBadgeHtml}
+            ${mediaBadgeHtml}
             <span class="note-category-tag ${catClass}">
               <span class="category-dot"></span>
               ${escapeHtml(category)}
@@ -190,11 +200,12 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card', extraOptions 
       : `<p class="grid-card-text">${highlightMatch(note.content || 'Tidak ada teks tambahan...', searchQuery)}</p>`;
 
     return `
-      <article class="note-grid-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+      <article class="note-grid-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}" ${themeAttr}>
         <div class="grid-card-header">
           <div class="grid-title-wrapper">
             <span class="grid-card-date-top">${shortDate}</span>
             ${folderBadgeHtml}
+            ${mediaBadgeHtml}
             <h3 class="grid-card-title">${highlightMatch(note.title || 'Tanpa Judul', searchQuery)}</h3>
           </div>
           ${actionButtonHtml}
@@ -217,10 +228,11 @@ function renderNoteItem(note, searchQuery = '', viewMode = 'card', extraOptions 
 
   // 3. TAMPILAN KARTU (CARD VIEW - Default sebelumnya):
   return `
-    <article class="note-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}">
+    <article class="note-card ${isPinned ? 'is-pinned' : ''}" data-note-id="${note.id}" ${themeAttr}>
       <div class="note-card-top">
         <div class="note-card-tags">
           ${folderBadgeHtml}
+          ${mediaBadgeHtml}
           <span class="note-category-tag ${catClass}">
             <span class="category-dot"></span>
             ${escapeHtml(category)}
